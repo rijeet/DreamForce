@@ -2,19 +2,20 @@ import 'package:dream_force/app/app.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('renders Dream Force navigation and opens activity chooser', (
+  testWidgets('requires Google account creation before app navigation', (
     tester,
   ) async {
     await tester.pumpWidget(const DreamForceApp());
 
-    expect(find.text('Today'), findsOneWidget);
-    expect(find.text('Plan'), findsOneWidget);
-    expect(find.text('Insights'), findsOneWidget);
-    expect(find.text('Profile'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Choose activity'));
     await tester.pumpAndSettle();
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.text('Today'), findsNothing);
 
-    expect(find.text('Choose activity'), findsOneWidget);
+    // Navigation is reachable only after Google returns a real account.
+    // The native account chooser is intentionally not exercised in a widget test.
+    await tester.tap(find.text('Continue with Google'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('GOOGLE_SERVER_CLIENT_ID'), findsOneWidget);
   });
 }

@@ -39,6 +39,9 @@ Useful local URLs:
 - OpenAPI JSON: `http://localhost:3000/openapi.json`
 - Swagger UI: `http://localhost:3000/swagger`
 
+Current production API: `https://dream-force-backend.vercel.app`  
+Current production Swagger UI: `https://dream-force-backend.vercel.app/swagger`
+
 Validate the backend before committing:
 
 ```powershell

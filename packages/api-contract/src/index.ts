@@ -7,10 +7,21 @@ export const healthResponseSchema = z.object({
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
-export const googleSignInSchema = z.object({
+export const googleAuthorizationCodeSchema = z.object({
   authorizationCode: z.string().min(1).max(4096),
   codeVerifier: z.string().min(43).max(128),
 });
+
+export const googleIdTokenSchema = z.object({
+  idToken: z.string().min(20).max(8192),
+});
+
+// Android sends a Google-issued ID token. Keep the PKCE variant for clients
+// that use an authorization-code flow.
+export const googleSignInSchema = z.union([
+  googleAuthorizationCodeSchema,
+  googleIdTokenSchema,
+]);
 
 export const adminSignInSchema = z.object({
   email: z.string().email().max(320),

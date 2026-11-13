@@ -9,7 +9,9 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
-    "provision:admin": "tsx scripts/provision-admin.ts"
+    "provision:admin": "tsx scripts/provision-admin.ts",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:verify": "tsx scripts/verify-schema.ts"
   },
   "dependencies": {
     "@dream-force/api-contract": "0.1.0",
@@ -17,8 +19,10 @@
     "@neondatabase/serverless": "^1.0.0",
     "@upstash/qstash": "^2.8.0",
     "@upstash/redis": "^1.35.0",
+    "dotenv": "^16.6.1",
     "jose": "^5.10.0",
     "next": "^15.0.0",
+    "postgres": "^3.4.7",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zod": "^3.24.0"

@@ -85,8 +85,14 @@ export async function exchangeGoogleAuthorizationCode(input: {
   const tokenBody = (await tokenResponse.json()) as { id_token?: string };
   if (!tokenBody.id_token) throw new AuthenticationError('GOOGLE_ID_TOKEN_MISSING');
 
+  return signInWithGoogleIdToken(tokenBody.id_token);
+}
+
+/** Verifies a native Android Google ID token before issuing Dream Force tokens. */
+export async function signInWithGoogleIdToken(idToken: string): Promise<SessionTokens> {
+  const environment = readServerEnvironment();
   const jwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
-  const verified = await jwtVerify(tokenBody.id_token, jwks, {
+  const verified = await jwtVerify(idToken, jwks, {
     issuer: environment.GOOGLE_ISSUER,
     audience: environment.GOOGLE_CLIENT_ID,
   });

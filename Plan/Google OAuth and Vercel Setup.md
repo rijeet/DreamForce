@@ -40,16 +40,26 @@ For a Play Store release using Play App Signing, copy the **App signing key cert
 5. Choose **Android**.
 6. Enter the package name `com.dreamforce.dream_force` and paste the debug SHA-1. Create it.
 7. Repeat step 4–6 for the release/Play App Signing SHA-1 before publishing.
-8. Copy the Android client ID. It ends in `.apps.googleusercontent.com`.
+8. Also create a **Web application** OAuth client (no Android package or SHA-1) and copy its client ID. This is the server client ID used to mint and verify the native Google ID token.
 
 Set this in the untracked `apps/api/.env.local` file:
 
 ```dotenv
-GOOGLE_CLIENT_ID=your-android-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_ID=your-web-server-client-id.apps.googleusercontent.com
 GOOGLE_ISSUER=https://accounts.google.com
 ```
 
-`GOOGLE_CLIENT_SECRET` is intentionally **not used** by Dream Force’s Android PKCE flow. Android is a public client: a secret embedded in an app would not be secret. Leave any such variable unset; do not create or ship an Android client secret.
+`GOOGLE_CLIENT_SECRET` is intentionally **not used** by the Android app. Android is a public client: a secret embedded in an app would not be secret. Leave any such variable unset; do not create or ship an Android client secret.
+
+Build or run the Android app with the same Web server client ID (do not commit it):
+
+```powershell
+flutter run --dart-define=GOOGLE_SERVER_CLIENT_ID=your-web-server-client-id.apps.googleusercontent.com
+```
+
+The Android client registrations still matter: Google uses the package/SHA-1 pair to trust the installed Android application. On sign-in the app sends the Google ID token to `POST /v1/auth/google`; the API verifies it against `GOOGLE_CLIENT_ID` before issuing Dream Force tokens.
+
+`GOOGLE_REDIRECT_URI` is also **not used** by the current Android mobile flow. The Flutter client receives the PKCE authorization result through its native app redirect and submits the authorization code to `POST /v1/auth/google`. Dream Force has no `/api/auth/google/callback` route. Do not set `GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback` for the deployed backend; it would point to a route that does not exist and would not be reachable by Android users.
 
 Google requires the package name and SHA-1 when creating Android credentials, and production should use its production signing certificate. [Official Android OAuth instructions](https://developers.google.com/workspace/guides/create-credentials) explain the same console fields.
 
@@ -69,7 +79,7 @@ Fill the new, untracked file:
 | `DATABASE_URL_UNPOOLED` | Neon direct connection string | CI migrations only; never Vercel runtime |
 | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST dashboard | Rate limiting/idempotency |
 | `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` | Upstash QStash dashboard | Job publishing/signature verification |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_ISSUER` | Google Cloud, step 3 | Android PKCE client |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_ISSUER` | Google Cloud, step 3 | Web server client ID and Google issuer |
 | `JWT_ACCESS_TOKEN_SECRET` | Generate locally | Random 32+ character secret |
 | `ADMIN_SESSION_SECRET` | Generate locally | Independent random 32+ character secret |
 
@@ -120,6 +130,18 @@ Expected health response:
 
 ```json
 { "status": "ok", "service": "dream-force-api" }
+```
+
+Current production API base URL:
+
+```text
+https://dream-force-backend.vercel.app
+```
+
+Production API documentation:
+
+```text
+https://dream-force-backend.vercel.app/swagger
 ```
 
 Swagger UI is available at `/swagger`, and the generated OpenAPI 3.1 document is available at `/openapi.json`. Swagger UI renders an OpenAPI document as interactive API documentation. [Swagger UI documentation](https://swagger.io/open-source/swagger-ui/) describes this integration.

@@ -54,7 +54,7 @@ registry.registerPath({ method: 'get', path: '/v1/daily-reviews/{localDate}', ta
 registry.registerPath({ method: 'put', path: '/v1/daily-reviews/{localDate}', tags: ['Daily Reviews'], security: bearerSecurity, request: { params: z.object({ localDate: z.string().date() }), body: { content: { 'application/json': { schema: dailyReviewSchema } } } }, responses: { 200: { description: 'Saved review' }, 412: { description: 'Stale review version' } } });
 
 for (const [path, requestSchema, description] of [
-  ['/v1/auth/google', googleSignInSchema, 'Exchange an Android PKCE authorization code.'],
+  ['/v1/auth/google', googleSignInSchema, 'Verify an Android Google ID token or exchange a PKCE authorization code.'],
   ['/v1/auth/admin/login', adminSignInSchema, 'Authenticate a script-provisioned admin.'],
   ['/v1/auth/refresh', refreshSessionSchema, 'Rotate an opaque refresh token.'],
 ] as const) {
