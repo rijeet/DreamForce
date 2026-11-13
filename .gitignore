@@ -1,0 +1,24 @@
+# JavaScript / Next.js
+node_modules/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+android/.gradle/
+android/local.properties
+ios/Pods/
+
+# Environment and local tooling
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.iml
+

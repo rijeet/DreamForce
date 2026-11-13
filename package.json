@@ -1,0 +1,21 @@
+{
+  "name": "dream-force",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Dream Force mobile application and serverless API",
+  "workspaces": [
+    "apps/api",
+    "packages/api-contract"
+  ],
+  "scripts": {
+    "dev:api": "npm run dev --workspace=@dream-force/api",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  }
+}

@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f8f5">
+  <title>Dream Force · Mobile screen reference</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8f5;
+      --surface: #fff;
+      --surface-subtle: #eaf0ec;
+      --text: #17231f;
+      --muted: #52615a;
+      --primary: #256d5b;
+      --primary-dark: #174c3d;
+      --primary-soft: #ddefe7;
+      --focus: #176b55;
+      --rest: #235c9b;
+      --warning: #8a5a00;
+      --danger: #b42318;
+      --border: #d8e1dc;
+      --radius: 16px;
+      --shadow: 0 20px 55px rgb(23 35 31 / 10%);
+      font-family: Roboto, "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--text);
+      background: #e9eeeb;
+      font-synthesis: none;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { color-scheme: dark; --bg:#101915; --surface:#18221d; --surface-subtle:#23312a; --text:#f1f5f2; --muted:#becbc3; --primary:#77c6a7; --primary-dark:#c9f0dd; --primary-soft:#1e4435; --focus:#77c6a7; --rest:#8dbbfa; --border:#34433a; --shadow:0 20px 55px rgb(0 0 0 / 30%); background:#0c120f; }
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; }
+    button, input, textarea { font: inherit; }
+
+    .board-header {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 36px 32px 22px;
+    }
+    .eyebrow { margin: 0 0 8px; color: var(--primary); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(28px, 4vw, 40px); line-height: 1.12; letter-spacing: -.03em; }
+    .board-intro { max-width: 720px; margin: 12px 0 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
+    .board-note { display: inline-flex; gap: 8px; align-items: center; margin-top: 16px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 12px; }
+    .board-note::before { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); content: ""; }
+
+    .screen-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 390px));
+      justify-content: center;
+      gap: 32px;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 12px 32px 56px;
+    }
+    .screen-wrap { min-width: 0; }
+    .screen-label { margin: 0 0 10px 4px; color: #59665f; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+
+    /* Each phone is a flex column: content scrolls inside it and the tab bar
+       occupies its own row. This prevents the fixed-navigation overlap seen
+       in the first Figma draft. */
+    .phone {
+      display: flex;
+      flex-direction: column;
+      width: 390px;
+      height: 844px;
+      max-width: 100%;
+      overflow: hidden;
+      border: 1px solid #cbd5cf;
+      border-radius: 30px;
+      background: var(--bg);
+      box-shadow: var(--shadow);
+      isolation: isolate;
+    }
+    .status-bar {
+      display: flex;
+      flex: 0 0 42px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: var(--bg);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .system-icons { color: var(--muted); font-size: 11px; letter-spacing: .04em; }
+    .screen-content {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      overscroll-behavior: contain;
+      padding: 10px 20px 24px;
+      scrollbar-width: thin;
+      scrollbar-color: #c9d4cd transparent;
+    }
+    .page-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+    .page-header h2 { margin: 0; font-size: 25px; line-height: 1.2; letter-spacing: -.025em; }
+    .page-header p { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
+    .avatar { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; border-radius: 50%; background: var(--primary-soft); color: var(--primary-dark); font-weight: 700; }
+    .section { margin: 20px 0 0; }
+    .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; font-size: 17px; line-height: 1.3; }
+    .section-link { border: 0; padding: 0; background: none; color: var(--primary); font-size: 13px; font-weight: 700; }
+    .card, .field, .day-summary {
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+    .card { padding: 15px; }
+    .card h3 { min-width: 0; margin: 0; font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+    .card p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+    .quick-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .quick-card { min-height: 96px; padding: 14px; }
+    .quick-card .duration { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+    .activity-row { display: flex; align-items: center; gap: 12px; min-width: 0; margin-top: 8px; padding: 12px 14px; }
+    .activity-dot { flex: 0 0 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--focus); }
+    .activity-copy { flex: 1 1 auto; min-width: 0; }
+    .activity-copy strong, .activity-copy span { display: block; overflow-wrap: anywhere; }
+    .activity-copy strong { font-size: 14px; line-height: 1.3; }
+    .activity-copy span { margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .text-action { flex: 0 0 auto; border: 0; padding: 8px 0 8px 8px; background: transparent; color: var(--primary); font-size: 13px; font-weight: 700; }
+    .button {
+      display: inline-flex;
+      min-height: 50px;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 17px;
+      padding: 12px 16px;
+      background: var(--primary);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      text-align: center;
+    }
+    .button.secondary { border-color: var(--border); background: var(--surface); color: var(--primary-dark); }
+    .button.danger { border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); background: var(--surface); color: var(--danger); }
+    .button.tonal { background: var(--primary-soft); color: var(--primary-dark); }
+    .button.small { width: auto; min-height: 40px; padding: 9px 13px; font-size: 13px; }
+    .phase-chip, .tag, .mood {
+      display: inline-flex;
+      min-height: 32px;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 999px;
+      padding: 6px 12px;
+      background: var(--surface-subtle);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .phase-chip.focus, .mood.selected { background: var(--primary-soft); color: var(--primary-dark); }
+    .phase-chip.rest { background: #e8f0fb; color: var(--rest); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .field { width: 100%; padding: 12px 14px; }
+    .field label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; font-weight: 600; }
+    .field input, .field textarea { display: block; width: 100%; min-width: 0; border: 0; outline: 0; padding: 0; color: var(--text); background: transparent; font-size: 14px; }
+    .field textarea { min-height: 120px; resize: vertical; line-height: 1.5; }
+    .helper { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .duration-control { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .stepper { display: flex; align-items: center; gap: 12px; }
+    .stepper button { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--primary-dark); font-weight: 700; }
+    .stepper strong { min-width: 72px; text-align: center; font-size: 18px; }
+    .format-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .format-option { min-width: 0; border: 1px solid var(--border); border-radius: 14px; padding: 11px 12px; background: var(--surface); text-align: left; }
+    .format-option.selected { border-color: var(--primary); background: var(--primary-soft); }
+    .format-option strong, .format-option span { display: block; overflow-wrap: anywhere; }
+    .format-option strong { font-size: 13px; }
+    .format-option span { margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .auto-format { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-subtle); }
+    .auto-format strong, .auto-format span { display:block; }
+    .auto-format strong { font-size:14px; color:var(--primary-dark); }
+    .auto-format span { margin-top:4px; color:var(--muted); font-size:12px; line-height:1.45; }
+    .icon-picker { display:flex; flex-wrap:wrap; gap:8px; }
+    .icon-choice { display:grid; width:42px; height:42px; place-items:center; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--primary-dark); font-size:18px; }
+    .icon-choice.selected { border-color:var(--primary); background:var(--primary-soft); }
+    .check-row { display:flex; align-items:flex-start; gap:9px; color:var(--muted); font-size:12px; line-height:1.4; }
+    .timer-panel { display: grid; justify-items: center; gap: 12px; padding: 10px 0 4px; text-align: center; }
+    .timer-ring { display: grid; width: 218px; height: 218px; place-items: center; border: 10px solid #ddefe7; border-top-color: var(--focus); border-right-color: var(--focus); border-radius: 50%; background: var(--surface); }
+    .timer-ring strong { display: block; font-size: 42px; line-height: 1.05; letter-spacing: -.04em; }
+    .timer-ring span { display: block; margin-top: 5px; color: var(--muted); font-size: 13px; }
+    .timer-title { margin: 0; color: var(--muted); font-size: 14px; }
+    .timer-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .week-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+    .week-day { min-width: 0; min-height: 46px; border: 0; border-radius: 13px; padding: 6px 2px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; }
+    .week-day.selected { background: var(--primary); color: #fff; }
+    .day-summary { padding: 13px 14px; background: var(--primary-soft); }
+    .day-summary strong, .day-summary span { display: block; }
+    .day-summary strong { color: var(--primary-dark); font-size: 14px; }
+    .day-summary span { margin-top: 4px; color: var(--muted); font-size: 12px; }
+    .review-count { color: var(--muted); font-size: 11px; }
+    .report-date { margin: 20px 0 8px; font-size: 15px; }
+    .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 58px; margin-top: 8px; padding: 11px 14px; }
+    .settings-row strong, .settings-row span { display: block; overflow-wrap: anywhere; }
+    .settings-row strong { font-size: 13px; }
+    .settings-row span { margin-top: 3px; color: var(--muted); font-size: 11px; }
+    .bottom-nav {
+      position: relative;
+      display: grid;
+      flex: 0 0 72px;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      align-items: center;
+      gap: 2px;
+      border-top: 1px solid var(--border);
+      padding: 5px 8px max(8px, env(safe-area-inset-bottom));
+      background: var(--surface);
+    }
+    .nav-item { display: grid; min-width: 0; justify-items: center; gap: 3px; border: 0; padding: 4px 2px; background: transparent; color: var(--muted); font-size: 10px; font-weight: 600; }
+    .nav-item:nth-child(3) { grid-column: 4; }
+    .nav-item:nth-child(4) { grid-column: 5; }
+    .nav-symbol { display: grid; width: 40px; height: 24px; place-items: center; border-radius: 999px; font-size: 16px; line-height: 1; }
+    .nav-symbol svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-linejoin:round; stroke-width:1.9; }
+    .nav-item.active { color: var(--primary-dark); }
+    .nav-item.active .nav-symbol { background: var(--primary-soft); }
+    .nav-fab { position:absolute; z-index:2; top:-27px; left:50%; display:grid; width:58px; height:58px; place-items:center; border:3px solid var(--surface); border-radius:50%; transform:translateX(-50%); background:var(--primary); box-shadow:0 9px 22px rgb(23 107 85 / 32%); color:#fff; }
+    .nav-fab svg { width:24px; height:24px; fill:none; stroke:currentColor; stroke-linecap:round; stroke-width:2.4; }
+    .nav-fab:focus-visible, .nav-item:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
+    .bottom-safe { flex: 0 0 4px; background: var(--surface); }
+    .session-note { padding: 13px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-subtle); color: var(--text); font-size: 13px; line-height: 1.45; }
+    .privacy-note { margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .usage-bar { height: 7px; overflow: hidden; border-radius: 99px; background: var(--surface-subtle); }
+    .usage-bar span { display: block; height: 100%; border-radius: inherit; background: var(--item-color, var(--primary)); }
+    .segment-control { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
+    .segment-control button { min-width: 0; min-height: 40px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 700; }
+    .segment-control button.selected { background: var(--primary); color: #fff; }
+    .period-control { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+    .period-control button { min-width: 0; min-height: 44px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; }
+    .period-control button.selected { background: var(--primary-soft); color: var(--primary-dark); }
+    .heatmap-card { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .heatmap-content { display:grid; gap:12px; }
+    .year-picker { display:grid; order:-1; grid-template-columns:repeat(5, minmax(58px, 1fr)); gap:6px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
+    .year-picker button { min-height:36px; border:0; border-radius:10px; padding:0 8px; background:var(--surface-subtle); color:var(--muted); font-size:11px; text-align:center; }
+    .year-picker button.selected { background:var(--primary); color:#fff; font-weight:700; }
+    .heatmap-tools { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .quarter-picker { display:flex; gap:4px; overflow-x:auto; scrollbar-width:none; }
+    .quarter-picker button { flex:0 0 auto; min-height:29px; border:0; border-radius:8px; padding:0 8px; background:var(--surface-subtle); color:var(--muted); font-size:10px; font-weight:600; }
+    .heatmap-scroll-hint { color:var(--muted); font-size:10px; white-space:nowrap; }
+    .heatmap-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .heatmap-head strong { font-size: 13px; }
+    .heatmap-head span { color: var(--muted); font-size: 10px; }
+    .heatmap-months { display: flex; justify-content: space-between; margin: 0 0 5px 16px; color: var(--muted); font-size: 9px; }
+    .heatmap-layout { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 5px; align-items: start; }
+    .heatmap-weekdays { display: grid; grid-template-rows: repeat(7, 9px); gap: 2px; color: var(--muted); font-size: 7px; line-height: 9px; }
+    .heatmap-scroll { min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+    .heatmap-grid { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 9px); grid-auto-columns: 9px; gap: 2px; width: max-content; }
+    .heat-cell { display: block; width: 9px; height: 9px; border: 0; border-radius: 2.5px; padding: 0; background: #e5ebe7; }
+    .heat-cell:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+    .heat-cell.empty { background: transparent; }
+    .heat-cell.future { border: 1px dashed var(--border); background: transparent; }
+    .heat-cell.neutral { background: #e3e8e5; }
+    .heat-cell.green-1 { background: #ccebdc; }
+    .heat-cell.green-2 { background: #91d4b6; }
+    .heat-cell.green-3 { background: #51b98c; }
+    .heat-cell.green-4 { background: #16845c; }
+    .heat-cell.red-1 { background: #f5d4d1; }
+    .heat-cell.red-2 { background: #eaa49e; }
+    .heat-cell.red-3 { background: #d96a61; }
+    .heat-cell.red-4 { background: #b42318; }
+    .heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 8px; color: var(--muted); font-size: 9px; }
+    .heat-legend .heat-cell { flex: 0 0 7px; width: 7px; height: 7px; }
+    .selected-day-card { padding:14px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); }
+    .selected-day-head { display:flex; align-items:start; justify-content:space-between; gap:8px; }
+    .selected-day-head span { color:var(--muted); font-size:10px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; }
+    .selected-day-head strong { display:block; margin-top:3px; font-size:14px; }
+    .balance-badge { border-radius:999px; padding:6px 9px; background:var(--primary-soft); color:var(--primary-dark); font-size:10px; font-weight:700; }
+    .comparison-row { margin-top:12px; }
+    .comparison-label { display:flex; justify-content:space-between; gap:8px; margin-bottom:5px; color:var(--muted); font-size:11px; }
+    .comparison-label strong { color:var(--text); }
+    .comparison-track { height:7px; overflow:hidden; border-radius:999px; background:var(--surface-subtle); }
+    .comparison-track i { display:block; height:100%; border-radius:inherit; }
+    .insight-kpis { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+    .insight-kpi { padding:12px; border:1px solid var(--border); border-radius:14px; background:var(--surface); }
+    .insight-kpi span { display:block; color:var(--muted); font-size:10px; }
+    .insight-kpi strong { display:block; margin-top:5px; font-size:16px; }
+    .admin-tabs { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
+    .admin-tabs button { flex:0 0 auto; min-height:34px; border:0; border-radius:999px; padding:0 11px; background:var(--surface-subtle); color:var(--muted); font-size:11px; font-weight:700; }
+    .admin-tabs button.selected { background:var(--primary); color:#fff; }
+    .admin-kpis { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+    .admin-kpi { padding:12px; border:1px solid var(--border); border-radius:14px; background:var(--surface); }
+    .admin-kpi span { display:block; color:var(--muted); font-size:10px; }
+    .admin-kpi strong { display:block; margin-top:5px; font-size:18px; }
+    .app-icon { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; border-radius: 10px; background: var(--primary-soft); color: var(--primary-dark); font-size: 11px; font-weight: 800; }
+    .chart-panel { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .chart-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .chart-heading strong { font-size: 13px; }
+    .chart-heading span { color: var(--muted); font-size: 10px; }
+    .donut-layout { display: grid; grid-template-columns: 122px minmax(0, 1fr); align-items: center; gap: 12px; }
+    .donut-chart { display: grid; width: 122px; height: 122px; place-items: center; border-radius: 50%; background: conic-gradient(var(--chart-stops, var(--primary) 0% 100%)); }
+    .donut-hole { display: grid; width: 78px; height: 78px; align-content: center; justify-items: center; border-radius: 50%; background: var(--surface); text-align: center; }
+    .donut-hole strong { font-size: 14px; line-height: 1.2; }
+    .donut-hole span { margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .chart-legend { display: grid; gap: 8px; min-width: 0; }
+    .legend-row { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 7px; min-width: 0; font-size: 11px; }
+    .legend-row strong { overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .legend-swatch { width: 9px; height: 9px; border-radius: 3px; background: var(--item-color); }
+
+    @media (max-width: 430px) {
+      .board-header { padding: 24px 18px 16px; }
+      .screen-grid { display: flex; flex-direction: column; align-items: center; gap: 26px; padding: 8px 12px 36px; }
+      .screen-wrap { width: min(390px, 100%); }
+      .phone { width: 100%; height: min(844px, calc(100dvh - 24px)); min-height: 640px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }
+  </style>
+</head>
+<body>
+  <header class="board-header">
+    <p class="eyebrow">Dream Force · Mobile reference</p>
+    <h1>Quiet Momentum</h1>
+    <p class="board-intro">Android-first layouts for Dream Force activities, automatic focus/rest cycles, editable weekly plans, private reflection, and optional Android-only app usage. A user picks an activity and total duration; the app calculates focus and rest automatically. The reference uses a scrollable content region and a separate navigation row so content cannot slip under the tabs.</p>
+    <span class="board-note">Responsive layout reference · 390 × 844 phone frame</span>
+  </header>
+
+  <main class="screen-grid">
+    <section class="screen-wrap" aria-label="Create account screen">
+      <p class="screen-label">00 · Create account</p>
+      <div class="phone"><div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div><div class="screen-content">
+        <header class="page-header"><div><h2>Welcome to Dream Force</h2><p>Plan one meaningful block at a time.</p></div></header>
+        <section class="section day-summary"><strong>Your plans and reflections are private.</strong><span>Use your account to keep them available across your devices.</span></section>
+        <section class="section"><button class="button">G&nbsp; Continue with Google</button></section>
+        <section class="section"><label class="check-row"><input type="checkbox"> <span>I agree to the <button class="section-link">Terms and Conditions</button> and <button class="section-link">Privacy Policy</button>.</span></label></section>
+        <p class="privacy-note">Google sign-in is optional only where another supported sign-in method is offered. Do not collect a provider password in Dream Force.</p>
+      </div><nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item active"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">◉</span>Insights</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div></div>
+    </section>
+    <section class="screen-wrap" aria-label="Today screen">
+      <p class="screen-label">01 · Today</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Tuesday, Nov 10</h2><p>A steady day, one block at a time.</p></div><div class="avatar" aria-label="Profile">R</div></header>
+          <section class="section"><h3 class="section-heading">Quick start <button class="section-link">See all</button></h3>
+            <div class="quick-grid">
+              <article class="card quick-card"><h3>📚 Study</h3><span class="duration">45 min · Automatic focus &amp; rest</span></article>
+              <article class="card quick-card"><h3>⌨ Coding</h3><span class="duration">60 min · Automatic focus &amp; rest</span></article>
+              <article class="card quick-card"><h3>🏃 Exercise</h3><span class="duration">30 min · Automatic focus &amp; rest</span></article>
+              <article class="card quick-card"><h3>📖 Reading</h3><span class="duration">30 min · Automatic focus &amp; rest</span></article>
+            </div>
+          </section>
+          <section class="section"><h3 class="section-heading">Today’s plan <button class="section-link">Edit plan</button></h3>
+            <article class="card activity-row"><span class="activity-dot"></span><div class="activity-copy"><strong>Study</strong><span>09:00 · 45 min</span></div><button class="text-action">Start</button></article>
+            <article class="card activity-row"><span class="activity-dot" style="background:var(--rest)"></span><div class="activity-copy"><strong>Reading</strong><span>11:00 · 30 min</span></div><button class="text-action">Start</button></article>
+          </section>
+          <section class="section day-summary"><strong>Close your day with a reflection</strong><span>No activities completed? You can still write why.</span><button class="text-action">Review today</button></section>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item active"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">≡</span>History</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Choose activity screen">
+      <p class="screen-label">02 · Choose activity</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Choose an activity</h2><p>Pick a saved activity or make a new one.</p></div></header>
+          <div class="field"><label for="activity-search">Search activities</label><input id="activity-search" placeholder="Search by name"></div>
+          <section class="section"><h3 class="section-heading">Quick picks</h3>
+            <article class="card activity-row"><span class="activity-dot"></span><div class="activity-copy"><strong>📚 Study</strong><span>45 min · Automatic focus &amp; rest</span></div><button class="text-action">Choose</button></article>
+            <article class="card activity-row"><span class="activity-dot"></span><div class="activity-copy"><strong>⌨ Coding</strong><span>60 min · Automatic focus &amp; rest</span></div><button class="text-action">Choose</button></article>
+            <article class="card activity-row"><span class="activity-dot"></span><div class="activity-copy"><strong>📖 Reading</strong><span>30 min · Automatic focus &amp; rest</span></div><button class="text-action">Choose</button></article>
+          </section>
+          <section class="section"><h3 class="section-heading">Recent</h3><article class="card activity-row"><span class="activity-dot" style="background:var(--rest)"></span><div class="activity-copy"><strong>Language practice</strong><span>20 min · Focus only</span></div><button class="text-action">Choose</button></article></section>
+          <section class="section"><button class="button">Create custom activity</button></section>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item active"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">≡</span>History</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Create activity screen">
+      <p class="screen-label">03 · Create activity</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Create activity</h2><p>Set a reusable default.</p></div></header>
+          <div class="field"><label for="activity-name">Activity name</label><input id="activity-name" value="Deep work"><p class="helper">Visible only in your private account.</p></div>
+          <section class="section"><h3 class="section-heading">Choose an icon</h3><div class="icon-picker" aria-label="Activity icon"><button class="icon-choice selected" aria-label="Book icon">📚</button><button class="icon-choice" aria-label="Laptop icon">⌨</button><button class="icon-choice" aria-label="Run icon">🏃</button><button class="icon-choice" aria-label="Target icon">◎</button><button class="icon-choice" aria-label="Pencil icon">✎</button></div></section>
+          <section class="section card duration-control"><div><h3>Total duration</h3><p>Focus and rest are calculated automatically.</p></div><div class="stepper"><button aria-label="Decrease duration">−</button><strong>60 min</strong><button aria-label="Increase duration">+</button></div></section>
+          <section class="section auto-format"><strong>Automatic focus and rest</strong><span>For 60 min: 50 min focus, then 10 min rest. For longer sessions, the app splits repeatable focus blocks and prompts a 20–30 min long rest after a completed 90-minute block.</span></section>
+          <section class="section"><button class="button">Save activity</button></section>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item active"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">≡</span>History</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Focus timer screen">
+      <p class="screen-label">04 · Focus timer</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Coding session</h2><p>Stay with the current block.</p></div></header>
+          <div class="chip-row"><span class="phase-chip focus">FOCUS · CYCLE 1</span><span class="phase-chip">1 of 1</span></div>
+          <section class="timer-panel"><div class="timer-ring"><div><strong>24:18</strong><span>Focus time left</span></div></div><p class="timer-title">Coding · 60 minute plan</p></section>
+          <p class="session-note">Next: Rest break · 5 min</p>
+          <section class="section"><button class="button">Pause session</button></section>
+          <section class="section"><button class="button danger">Delete session</button></section>
+          <p class="helper">Your timer continues if you leave this screen. Lock-screen controls depend on device settings.</p>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item active"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">≡</span>History</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Session completion screen">
+      <p class="screen-label">05 · Session complete</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Session complete</h2><p>Thanks for showing up for this block.</p></div></header>
+          <div class="day-summary"><strong>Coding finished</strong><span>One focus block and one break.</span></div>
+          <p class="session-note"><strong>Great job!</strong><br>You have completed a focus period. A local notification appears when device settings allow it.</p>
+          <section class="section"><article class="card activity-row"><div class="activity-copy"><strong>Focused</strong><span>50 min</span></div><strong>50:00</strong></article><article class="card activity-row"><div class="activity-copy"><strong>Rested</strong><span>10 min</span></div><strong>10:00</strong></article></section>
+          <section class="section"><button class="button">Done</button></section><section class="section"><button class="button tonal">Start another activity</button></section>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item active"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">≡</span>History</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Weekly plan screen">
+      <p class="screen-label">06 · Weekly plan</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Your weekly plan</h2><p>Week of Nov 9 · Asia/Dhaka</p></div></header>
+          <div class="week-strip" aria-label="Choose a day"><button class="week-day">M<br>9</button><button class="week-day selected">T<br>10</button><button class="week-day">W<br>11</button><button class="week-day">T<br>12</button><button class="week-day">F<br>13</button><button class="week-day">S<br>14</button><button class="week-day">S<br>15</button></div>
+          <section class="section"><h3 class="section-heading">Tuesday · 3 activities <button class="section-link">Edit</button></h3>
+            <article class="card activity-row"><span class="activity-dot"></span><div class="activity-copy"><strong>Study</strong><span>09:00 · 45 min</span></div><button class="text-action">Start</button></article>
+            <article class="card activity-row"><span class="activity-dot" style="background:var(--warning)"></span><div class="activity-copy"><strong>Exercise</strong><span>12:30 · 30 min</span></div><button class="text-action">Skip</button></article>
+            <article class="card activity-row"><span class="activity-dot" style="background:var(--rest)"></span><div class="activity-copy"><strong>Coding</strong><span>15:00 · 60 min</span></div><button class="text-action">Start</button></article>
+          </section>
+          <section class="section"><button class="button">Add activity</button></section>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item"><span class="nav-symbol">◷</span>Today</button><button class="nav-item active"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">≡</span>History</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Daily review screen">
+      <p class="screen-label">07 · Daily review</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Daily review</h2><p>Tuesday, November 10</p></div></header>
+          <div class="day-summary"><strong>1 of 3 planned activities completed</strong><span>There’s room to reflect on any kind of day.</span></div>
+          <section class="section"><h3 class="section-heading">How did today feel?</h3><div class="chip-row"><button class="mood">Positive</button><button class="mood selected">Mixed</button><button class="mood">Difficult</button></div></section>
+          <section class="section field"><label for="review-text">What happened today?</label><textarea id="review-text" placeholder="Write freely about what went well, what got in the way, or what you need tomorrow."></textarea><p class="helper">Private to your account · 0 / 5,000</p></section>
+          <section class="section"><h3 class="section-heading">What got in the way?</h3><div class="chip-row"><button class="tag">Appointment</button><button class="tag">Low energy</button><button class="tag">Unexpected work</button></div></section>
+          <section class="section"><button class="button">Save review</button></section>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item active"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">≡</span>History</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Edit weekly plan screen">
+      <p class="screen-label">08 · Edit weekly plan</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Edit weekly plan</h2><p>Tuesday, Nov 10 · Asia/Dhaka</p></div><button class="section-link">Done</button></header>
+          <div class="week-strip" aria-label="Choose a day"><button class="week-day">M<br>9</button><button class="week-day selected">T<br>10</button><button class="week-day">W<br>11</button><button class="week-day">T<br>12</button><button class="week-day">F<br>13</button><button class="week-day">S<br>14</button><button class="week-day">S<br>15</button></div>
+          <section class="section day-summary"><strong>3 activities planned</strong><span>Drag to reorder. Changes apply to future occurrences only.</span></section>
+          <section class="section"><article class="card activity-row"><span class="activity-dot"></span><div class="activity-copy"><strong>📚 Study</strong><span>09:00 · 45 min</span></div><button class="text-action">Edit</button><span aria-label="Reorder">⠿</span></article>
+          <article class="card activity-row"><span class="activity-dot" style="background:var(--warning)"></span><div class="activity-copy"><strong>🏃 Exercise</strong><span>12:30 · 30 min</span></div><button class="text-action">Edit</button><span aria-label="Reorder">⠿</span></article>
+          <article class="card activity-row"><span class="activity-dot" style="background:var(--rest)"></span><div class="activity-copy"><strong>⌨ Coding</strong><span>15:00 · 60 min</span></div><button class="text-action">Edit</button><span aria-label="Reorder">⠿</span></article></section>
+          <section class="section"><button class="button">Add activity</button><button class="button secondary" style="margin-top:10px">Copy this day</button></section>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item"><span class="nav-symbol">◷</span>Today</button><button class="nav-item active"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">◉</span>Insights</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Profile and settings screen">
+      <p class="screen-label">09 · Profile</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Profile</h2><p>Your account and preferences.</p></div></header>
+          <article class="card activity-row"><div class="avatar">R</div><div class="activity-copy"><strong>Riya</strong><span>Verified Google account</span></div><button class="text-action">Edit profile</button></article>
+          <section class="section"><h3 class="section-heading">Preferences</h3>
+            <article class="card settings-row"><div><strong>Appearance</strong><span>System default</span></div><span>›</span></article>
+            <article class="card settings-row"><div><strong>Time and language</strong><span>Asia/Dhaka · English</span></div><span>›</span></article>
+            <article class="card settings-row"><div><strong>Automatic focus and rest</strong><span>Calculated from the total duration</span></div><span>›</span></article>
+            <article class="card settings-row"><div><strong>Phase notifications</strong><span>Focus and rest reminders · On</span></div><span>›</span></article>
+          </section>
+          <section class="section"><h3 class="section-heading">Android only</h3>
+            <article class="card settings-row"><div><strong>App screen time</strong><span>Optional · Usage access is off</span></div><span>›</span></article>
+            <p class="privacy-note">Usage summaries stay on this device. This setting and dashboard are not available on iOS.</p>
+          </section>
+          <section class="section"><h3 class="section-heading">Privacy and support</h3>
+            <article class="card settings-row"><div><strong>Privacy Policy</strong><span>How Dream Force handles your data</span></div><span>›</span></article>
+            <article class="card settings-row"><div><strong>Terms and Conditions</strong><span>Read the app terms</span></div><span>›</span></article>
+            <article class="card settings-row"><div><strong>Export your data</strong><span>Get a copy of your information</span></div><span>›</span></article>
+            <article class="card settings-row"><div><strong>Help and support</strong><span>Contact the Dream Force team</span></div><span>›</span></article>
+          </section>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">≡</span>History</button><button class="nav-item active"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Edit profile screen">
+      <p class="screen-label">10 · Edit profile</p>
+      <div class="phone"><div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div><div class="screen-content">
+        <header class="page-header"><div><h2>Edit profile</h2><p>Choose how Dream Force addresses you.</p></div><button class="section-link">Cancel</button></header>
+        <section class="section"><div class="avatar" style="width:68px;height:68px">R</div><button class="section-link" style="margin-top:10px">Change avatar</button></section>
+        <section class="section field"><label for="profile-name">Display name</label><input id="profile-name" value="Riya"></section>
+        <section class="section field"><label for="profile-email">Google account</label><input id="profile-email" value="riya@example.com" readonly><p class="helper">Your email is not shown in ordinary profile views.</p></section>
+        <section class="section field"><label for="profile-gender">Gender</label><input id="profile-gender" placeholder="Optional"></section>
+        <section class="section field"><label for="profile-birth-date">Date of birth</label><input id="profile-birth-date" type="date"></section>
+        <section class="section field"><label for="profile-country">Country</label><input id="profile-country" value="Bangladesh"></section>
+        <section class="section field"><label for="profile-city">City</label><input id="profile-city" value="Dhaka"></section>
+        <section class="section field"><label for="profile-profession">Profession</label><input id="profile-profession" placeholder="Optional"></section>
+        <section class="section field"><label for="profile-timezone">Time zone</label><input id="profile-timezone" value="Asia/Dhaka"></section>
+        <section class="section"><button class="button">Save profile</button></section>
+      </div><nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item"><span class="nav-symbol">◉</span>Insights</button><button class="nav-item active"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div></div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Android Usage access explanation screen">
+      <p class="screen-label">10 · Android Usage access</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>See screen time by app</h2><p>Optional · Android only</p></div></header>
+          <div class="day-summary"><strong>Your Dream Force data keeps working either way.</strong><span>Usage access is a separate Android setting. You can change it at any time.</span></div>
+          <section class="section"><h3 class="section-heading">What this lets Dream Force do</h3>
+            <article class="card"><p>Read Android’s daily usage summaries so you can review time by app on this device, including Dream Force when Android provides a usage record for it.</p>
+              <p class="privacy-note">App names and durations stay on this phone by default. An optional analytics setting may contribute anonymous daily totals for aggregate reports; support never sees your app list.</p>
+            </article>
+          </section>
+          <section class="section"><h3 class="section-heading">Turn it on in Settings</h3>
+            <article class="card activity-row"><span class="activity-dot" style="background:var(--warning)"></span><div class="activity-copy"><strong>Usage access</strong><span>Dream Force · Not enabled</span></div></article>
+            <p class="privacy-note">Android Settings opens next. Select Dream Force and enable “Permit usage access,” then return here. You can choose Not now.</p>
+          </section>
+          <section class="section"><button class="button">Open Usage access settings</button><button class="button secondary" style="margin-top:10px">Not now</button></section>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item active"><span class="nav-symbol">≡</span>History</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Yearly activity heatmap and activity categories">
+      <p class="screen-label">11 · Insights · Activity selected</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Time insights</h2><p>Review focus sessions and app time by period.</p></div></header>
+          <div class="segment-control" aria-label="Insights view"><button class="selected">Activity</button><button>Screen time</button></div>
+          <section class="section"><div class="period-control" role="group" aria-label="Time period"><button type="button" data-period="day" aria-pressed="false">Day</button><button type="button" data-period="week" aria-pressed="false">Week</button><button type="button" data-period="month" aria-pressed="false">Month</button><button type="button" class="selected" data-period="year" aria-pressed="true">Year</button></div></section>
+          <section class="section"><div class="day-summary period-summary"><strong data-period-total>Focus time · 1,680 h</strong><span data-period-label>2026 to date · completed Dream Force focus sessions</span></div></section>
+          
+          <section class="section"><div class="chart-panel">
+            <div class="chart-heading"><strong>Activity mix</strong><span class="period-caption">2026 to date</span></div>
+            <div class="donut-layout"><div class="donut-chart" data-donut role="img" aria-label="Dream Force focus time by activity category"><div class="donut-hole"><strong data-chart-total>1,680 h</strong><span>Total focus</span></div></div>
+              <div class="chart-legend">
+                <div class="legend-row" data-chart-item data-color="#2F7D62" data-day="2.5" data-week="18" data-month="78" data-year="620"><i class="legend-swatch" style="--item-color:#2F7D62"></i><span>Study</span><strong>620 h</strong></div>
+                <div class="legend-row" data-chart-item data-color="#3974C5" data-day="2" data-week="12" data-month="50" data-year="540"><i class="legend-swatch" style="--item-color:#3974C5"></i><span>Coding</span><strong>540 h</strong></div>
+                <div class="legend-row" data-chart-item data-color="#D18A1F" data-day="1.5" data-week="8" data-month="28" data-year="520"><i class="legend-swatch" style="--item-color:#D18A1F"></i><span>Reading</span><strong>520 h</strong></div>
+              </div>
+            </div>
+          </div></section>
+          <section class="section"><h3 class="section-heading">Activity by category <span class="review-count period-caption">2026 to date</span></h3>
+            <article class="card activity-row"><span class="activity-dot" style="background:#2F7D62"></span><div class="activity-copy"><strong>Study</strong><span>Completed focus sessions</span></div><strong class="category-duration" data-day="2.5" data-week="18" data-month="78" data-year="620">620 h</strong></article>
+            <article class="card activity-row"><span class="activity-dot" style="background:#3974C5"></span><div class="activity-copy"><strong>Coding</strong><span>Completed focus sessions</span></div><strong class="category-duration" data-day="2" data-week="12" data-month="50" data-year="540">540 h</strong></article>
+            <article class="card activity-row"><span class="activity-dot" style="background:#D18A1F"></span><div class="activity-copy"><strong>Reading</strong><span>Completed focus sessions</span></div><strong class="category-duration" data-day="1.5" data-week="8" data-month="28" data-year="520">520 h</strong></article>
+            <p class="privacy-note">Category colors stay consistent in the chart and list.</p>
+          </section>
+
+          <section class="section period-heatmap"><div class="heatmap-card"><div class="heatmap-content"><div>
+            <div class="heatmap-tools"><div class="quarter-picker" aria-label="Jump to quarter"><button>Jan–Mar</button><button>Apr–Jun</button><button>Jul–Sep</button><button>Oct–Dec</button></div><span class="heatmap-scroll-hint">Swipe →</span></div>
+            <div class="heatmap-head"><strong>Activity − screen time</strong><span>Each square is one day</span></div>
+            <div class="heatmap-months"><span>Jan</span><span>Mar</span><span>May</span><span>Jul</span><span>Sep</span><span>Nov</span></div>
+            <div class="heatmap-layout"><div class="heatmap-weekdays" aria-hidden="true"><span></span><span>Tue</span><span></span><span>Thu</span><span></span><span>Sat</span><span></span></div><div class="heatmap-scroll"><div class="heatmap-grid" role="img" aria-label="Yearly activity compared with Android app screen time. Green means more Dream Force activity; red means more screen time."></div></div></div>
+            <div class="heat-legend"><span>More screen time</span><i class="heat-cell red-3"></i><i class="heat-cell red-1"></i><i class="heat-cell neutral"></i><i class="heat-cell green-1"></i><i class="heat-cell green-3"></i><span>More activity</span></div>
+          
+          </div><div class="year-picker" aria-label="Choose heatmap year"><button class="selected">2026</button><button>2025</button><button>2024</button><button>2023</button><button>2022</button></div></div></div></section>
+          <section class="section selected-day-card" aria-label="Selected day details"><div class="selected-day-head"><div><span>Selected day</span><strong>Tue, Nov 10, 2026</strong></div><b class="balance-badge">More activity</b></div><div class="comparison-row"><div class="comparison-label"><span>● Dream Force activity</span><strong>84 min</strong></div><div class="comparison-track"><i style="width:70%;background:var(--focus)"></i></div></div><div class="comparison-row"><div class="comparison-label"><span>● Screen time</span><strong>2 h 18 min</strong></div><div class="comparison-track"><i style="width:31%;background:var(--danger)"></i></div></div></section>
+          <section class="section insight-kpis" aria-label="Yearly activity summary"><article class="insight-kpi"><span>Active balance</span><strong style="color:var(--focus)">58% · 184 d</strong></article><article class="insight-kpi"><span>Daily activity</span><strong>64 min <small>avg</small></strong></article><article class="insight-kpi"><span>Screen time</span><strong>3.8 h <small>avg</small></strong></article><article class="insight-kpi"><span>Active streak</span><strong>14 days</strong></article></section>
+          
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item active"><span class="nav-symbol">≡</span>History</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+
+    <section class="screen-wrap" aria-label="Android screen-time app dashboard">
+      <p class="screen-label">12 · Insights · Screen time selected</p>
+      <div class="phone">
+        <div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div>
+        <div class="screen-content">
+          <header class="page-header"><div><h2>Time insights</h2><p>All-app screen time · Android only</p></div></header>
+          <div class="segment-control" aria-label="Insights view"><button>Activity</button><button class="selected">Screen time</button></div>
+          <section class="section"><div class="period-control" role="group" aria-label="Time period"><button type="button" data-period="day" aria-pressed="false">Day</button><button type="button" data-period="week" aria-pressed="false">Week</button><button type="button" data-period="month" aria-pressed="false">Month</button><button type="button" class="selected" data-period="year" aria-pressed="true">Year</button></div></section>
+          <section class="section"><div class="day-summary period-summary"><strong data-period-total>App screen time · 1,560 h</strong><span data-period-label>2026 to date · all apps reported by Android</span></div></section>
+          <section class="section"><div class="chart-panel">
+            <div class="chart-heading"><strong>Screen time mix</strong><span class="period-caption">2026 to date</span></div>
+            <div class="donut-layout"><div class="donut-chart" data-donut role="img" aria-label="Android app screen time by app"><div class="donut-hole"><strong data-chart-total>1,560 h</strong><span>Total screen time</span></div></div>
+              <div class="chart-legend">
+                <div class="legend-row" data-chart-item data-color="#E56B54" data-year="400"><i class="legend-swatch" style="--item-color:#E56B54"></i><span>Reader</span><strong>400 h</strong></div>
+                <div class="legend-row" data-chart-item data-color="#3975C6" data-year="350"><i class="legend-swatch" style="--item-color:#3975C6"></i><span>Browser</span><strong>350 h</strong></div>
+                <div class="legend-row" data-chart-item data-color="#7B59C9" data-year="200"><i class="legend-swatch" style="--item-color:#7B59C9"></i><span>Music</span><strong>200 h</strong></div>
+                <div class="legend-row" data-chart-item data-color="#28775F" data-year="150"><i class="legend-swatch" style="--item-color:#28775F"></i><span>Dream Force</span><strong>150 h</strong></div>
+                <div class="legend-row" data-chart-item data-color="#D97706" data-year="110"><i class="legend-swatch" style="--item-color:#D97706"></i><span>Chat</span><strong>110 h</strong></div>
+                <div class="legend-row" data-chart-item data-color="#7B8790" data-year="350"><i class="legend-swatch" style="--item-color:#7B8790"></i><span>Other apps</span><strong>350 h</strong></div>
+              </div>
+            </div>
+          </div></section>
+          <section class="section"><h3 class="section-heading">All apps by screen time <span class="review-count period-caption">2026 to date · 18 apps</span></h3>
+            <article class="card activity-row"><span class="app-icon" style="background:#FCE5DF;color:#A43B27">R</span><div class="activity-copy"><strong>Reader</strong><span class="app-duration" data-year="400" data-share="25.6">400 h · 25.6% of observed</span><div class="usage-bar"><span style="width:26%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#E4EEFC;color:#2857A0">B</span><div class="activity-copy"><strong>Browser</strong><span class="app-duration" data-year="350" data-share="22.4">350 h · 22.4% of observed</span><div class="usage-bar"><span style="width:22%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#EEE8FC;color:#5B3E9E">M</span><div class="activity-copy"><strong>Music</strong><span class="app-duration" data-year="200" data-share="12.8">200 h · 12.8% of observed</span><div class="usage-bar"><span style="width:13%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#DDEFE7;color:#1C5C47">D</span><div class="activity-copy"><strong>Dream Force</strong><span class="app-duration" data-year="150" data-share="9.6">150 h · 9.6% of observed</span><div class="usage-bar"><span style="width:10%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#FDE8CF;color:#994F00">C</span><div class="activity-copy"><strong>Chat</strong><span class="app-duration" data-year="110" data-share="7.1">110 h · 7.1% of observed</span><div class="usage-bar"><span style="width:7%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#DDF3F3;color:#086470">M</span><div class="activity-copy"><strong>Maps</strong><span class="app-duration" data-year="80" data-share="5.1">80 h · 5.1% of observed</span><div class="usage-bar"><span style="width:5%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#FCE4EC;color:#A42852">S</span><div class="activity-copy"><strong>Social</strong><span class="app-duration" data-year="62" data-share="4.0">62 h · 4.0% of observed</span><div class="usage-bar"><span style="width:4%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#E6F0FF;color:#315A99">E</span><div class="activity-copy"><strong>Email</strong><span class="app-duration" data-year="45" data-share="2.9">45 h · 2.9% of observed</span><div class="usage-bar"><span style="width:3%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#FFE5DC;color:#9A391C">V</span><div class="activity-copy"><strong>Video</strong><span class="app-duration" data-year="40" data-share="2.6">40 h · 2.6% of observed</span><div class="usage-bar"><span style="width:3%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#E5F5E9;color:#28663A">C</span><div class="activity-copy"><strong>Calendar</strong><span class="app-duration" data-year="30" data-share="1.9">30 h · 1.9% of observed</span><div class="usage-bar"><span style="width:2%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#FFF1C9;color:#7A5700">N</span><div class="activity-copy"><strong>News</strong><span class="app-duration" data-year="24" data-share="1.5">24 h · 1.5% of observed</span><div class="usage-bar"><span style="width:2%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#F0E6FA;color:#5B3C82">P</span><div class="activity-copy"><strong>Photos</strong><span class="app-duration" data-year="20" data-share="1.3">20 h · 1.3% of observed</span><div class="usage-bar"><span style="width:1%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#E4F3F0;color:#1D6455">N</span><div class="activity-copy"><strong>Notes</strong><span class="app-duration" data-year="14" data-share="0.9">14 h · 0.9% of observed</span><div class="usage-bar"><span style="width:1%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#E1F0FA;color:#215D7A">B</span><div class="activity-copy"><strong>Banking</strong><span class="app-duration" data-year="10" data-share="0.6">10 h · 0.6% of observed</span><div class="usage-bar"><span style="width:1%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#E6F2FE;color:#2C5E9A">W</span><div class="activity-copy"><strong>Weather</strong><span class="app-duration" data-year="8" data-share="0.5">8 h · 0.5% of observed</span><div class="usage-bar"><span style="width:1%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#FCE5E5;color:#A13C3C">C</span><div class="activity-copy"><strong>Camera</strong><span class="app-duration" data-year="6" data-share="0.4">6 h · 0.4% of observed</span><div class="usage-bar"><span style="width:1%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#ECEFF1;color:#43505B">S</span><div class="activity-copy"><strong>Settings</strong><span class="app-duration" data-year="6" data-share="0.4">6 h · 0.4% of observed</span><div class="usage-bar"><span style="width:1%"></span></div></div></article>
+            <article class="card activity-row"><span class="app-icon" style="background:#E1F4E8;color:#266B43">P</span><div class="activity-copy"><strong>Phone</strong><span class="app-duration" data-year="5" data-share="0.3">5 h · 0.3% of observed</span><div class="usage-bar"><span style="width:1%"></span></div></div></article>
+          </section>
+          <section class="section period-heatmap"><div class="heatmap-card"><div class="heatmap-content"><div>
+            <div class="heatmap-tools"><div class="quarter-picker" aria-label="Jump to quarter"><button>Jan–Mar</button><button>Apr–Jun</button><button>Jul–Sep</button><button>Oct–Dec</button></div><span class="heatmap-scroll-hint">Swipe →</span></div>
+            <div class="heatmap-head"><strong>Activity − screen time</strong><span>Each square is one day</span></div>
+            <div class="heatmap-months"><span>Jan</span><span>Mar</span><span>May</span><span>Jul</span><span>Sep</span><span>Nov</span></div>
+            <div class="heatmap-layout"><div class="heatmap-weekdays" aria-hidden="true"><span></span><span>Tue</span><span></span><span>Thu</span><span></span><span>Sat</span><span></span></div><div class="heatmap-scroll"><div class="heatmap-grid" role="img" aria-label="Yearly comparison. Green means more Dream Force activity; red means more Android screen time."></div></div></div>
+            <div class="heat-legend"><span>More screen time</span><i class="heat-cell red-3"></i><i class="heat-cell red-1"></i><i class="heat-cell neutral"></i><i class="heat-cell green-1"></i><i class="heat-cell green-3"></i><span>More activity</span></div>
+          </div><div class="year-picker" aria-label="Choose heatmap year"><button class="selected">2026</button><button>2025</button><button>2024</button><button>2023</button><button>2022</button></div></div></div></section>
+          <section class="section selected-day-card" aria-label="Selected day details"><div class="selected-day-head"><div><span>Selected day</span><strong>Tue, Nov 10, 2026</strong></div><b class="balance-badge">More activity</b></div><div class="comparison-row"><div class="comparison-label"><span>● Dream Force activity</span><strong>84 min</strong></div><div class="comparison-track"><i style="width:70%;background:var(--focus)"></i></div></div><div class="comparison-row"><div class="comparison-label"><span>● Screen time</span><strong>2 h 18 min</strong></div><div class="comparison-track"><i style="width:31%;background:var(--danger)"></i></div></div></section>
+          <section class="section insight-kpis" aria-label="Yearly activity summary"><article class="insight-kpi"><span>Active balance</span><strong style="color:var(--focus)">58% · 184 d</strong></article><article class="insight-kpi"><span>Daily activity</span><strong>64 min <small>avg</small></strong></article><article class="insight-kpi"><span>Screen time</span><strong>3.8 h <small>avg</small></strong></article><article class="insight-kpi"><span>Active streak</span><strong>14 days</strong></article></section>
+          
+          <section class="section"><p class="privacy-note">Usage stays on this device by default. Optional anonymous aggregates may support Top 10 app reports; Android totals can be delayed or incomplete.</p><button class="button secondary" style="margin-top:10px">Manage Usage access</button>
+        </div>
+        <nav class="bottom-nav" aria-label="Main navigation"><button class="nav-item"><span class="nav-symbol">◷</span>Today</button><button class="nav-item"><span class="nav-symbol">▦</span>Plan</button><button class="nav-item active"><span class="nav-symbol">≡</span>History</button><button class="nav-item"><span class="nav-symbol">●</span>Profile</button></nav><div class="bottom-safe"></div>
+      </div>
+    </section>
+    <section class="screen-wrap" aria-label="Admin CRM dashboard screen">
+      <p class="screen-label">13 · Admin CRM dashboard</p>
+      <div class="phone"><div class="status-bar"><span>9:41</span><span class="system-icons">● LTE ▰</span></div><div class="screen-content">
+        <header class="page-header"><div><h2>Admin CRM</h2><p>Aggregate product health and support.</p></div><div class="avatar">A</div></header>
+        <div class="admin-tabs" aria-label="Admin CRM sections"><button class="selected">Overview</button><button>Tickets</button><button>Templates</button><button>Notify</button></div>
+        <section class="section"><div class="period-control" role="group" aria-label="CRM reporting period"><button>Day</button><button>Week</button><button class="selected">Month</button><button>Year</button></div></section>
+        <section class="section admin-kpis"><article class="admin-kpi"><span>Active users</span><strong>1,248</strong></article><article class="admin-kpi"><span>Focus completed</span><strong>3,406 h</strong></article><article class="admin-kpi"><span>Open tickets</span><strong style="color:var(--warning)">18</strong></article><article class="admin-kpi"><span>Campaign delivered</span><strong>96.4%</strong></article></section>
+        <section class="section"><h3 class="section-heading">Support queue <button class="section-link">View all</button></h3><article class="card activity-row"><span class="activity-dot" style="background:var(--warning)"></span><div class="activity-copy"><strong>Unable to sync plan</strong><span>Open · Assigned to Admin · 18 min ago</span></div><button class="text-action">Resolve</button></article><article class="card activity-row"><span class="activity-dot"></span><div class="activity-copy"><strong>Notification question</strong><span>In progress · 2 h ago</span></div><button class="text-action">Open</button></article></section>
+        <section class="section"><h3 class="section-heading">Top performers <span class="review-count">Focus time</span></h3><article class="card activity-row"><span class="app-icon">1</span><div class="activity-copy"><strong>User 8F2A</strong><span>Completed focus sessions</span></div><strong>42 h</strong></article><article class="card activity-row"><span class="app-icon">2</span><div class="activity-copy"><strong>User C91B</strong><span>Completed focus sessions</span></div><strong>39 h</strong></article></section>
+        <section class="section"><h3 class="section-heading">Top 10 apps <span class="review-count">Opt-in aggregate</span></h3><article class="card activity-row"><span class="app-icon">B</span><div class="activity-copy"><strong>Browser</strong><span>Anonymous contributors · 612 users</span><div class="usage-bar"><span style="width:86%"></span></div></div><strong>1,840 h</strong></article><article class="card activity-row"><span class="app-icon">M</span><div class="activity-copy"><strong>Music</strong><span>Anonymous contributors · 488 users</span><div class="usage-bar"><span style="width:61%"></span></div></div><strong>1,320 h</strong></article><p class="privacy-note">No individual app timeline or installed-app list is available to admins.</p></section>
+        <section class="section"><button class="button">Create notification</button><button class="button secondary" style="margin-top:10px">Manage global templates</button></section>
+      </div><div class="bottom-safe"></div></div>
+    </section>
+  </main>
+  <script>
+    // Navigation is consistent across every reference frame: Insights replaces History.
+    document.querySelectorAll('.bottom-nav .nav-item:nth-child(3)').forEach((item) => {
+      item.innerHTML = '<span class="nav-symbol">◉</span>Insights';
+    });
+    const navIcons = {
+      Today: '<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5v4.8l3.2 2"></path></svg>',
+      Plan: '<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4.5" y="4.5" width="15" height="15" rx="2.5"></rect><path d="M4.5 9.5h15M9.5 4.5v15M14.5 4.5v15M4.5 14.5h15"></path></svg>',
+      Insights: '<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle></svg>',
+      Profile: '<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.25"></circle><path d="M5.5 19c.9-3.2 3.2-5 6.5-5s5.6 1.8 6.5 5"></path></svg>'
+    };
+    document.querySelectorAll('.bottom-nav').forEach((nav) => {
+      nav.querySelectorAll('.nav-item').forEach((item) => {
+        const label = item.textContent.trim();
+        const icon = navIcons[label];
+        if (icon) item.innerHTML = `<span class="nav-symbol">${icon}</span>${label}`;
+      });
+      const fab = document.createElement('button');
+      fab.type = 'button';
+      fab.className = 'nav-fab';
+      fab.setAttribute('aria-label', 'Choose an activity');
+      fab.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>';
+      fab.addEventListener('click', () => {
+        const chooseActivity = document.querySelector('[aria-label="Choose activity screen"]');
+        if (chooseActivity) {
+          chooseActivity.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          history.replaceState(null, '', '#choose-activity');
+        }
+      });
+      nav.append(fab);
+    });
+    document.querySelectorAll('.year-picker').forEach((picker) => {
+      picker.addEventListener('click', (event) => {
+        const selected = event.target.closest('button');
+        if (!selected) return;
+        picker.querySelectorAll('button').forEach((button) => button.classList.toggle('selected', button === selected));
+      });
+    });
+    document.querySelectorAll('.heatmap-card').forEach((card) => {
+      const scroller = card.querySelector('.heatmap-scroll');
+      card.querySelectorAll('.quarter-picker button').forEach((button, index) => {
+        button.addEventListener('click', () => {
+          if (!scroller) return;
+          const max = scroller.scrollWidth - scroller.clientWidth;
+          scroller.scrollTo({ left: max * (index / 3), behavior: 'smooth' });
+        });
+      });
+    });
+    const periodLabels = { day: 'Today', week: 'This week', month: 'November 2026', year: '2026 to date' };
+    const activityTotals = { day: '6 h', week: '38 h', month: '156 h', year: '1,680 h' };
+    const screenTimeTotals = { day: '4 h 16 min', week: '30 h', month: '130 h', year: '1,560 h' };
+    const appColors = { Reader: '#E56B54', Browser: '#3975C6', Music: '#7B59C9', 'Dream Force': '#28775F', Chat: '#D97706', Maps: '#0E8A9D', Social: '#D84C7A', Email: '#426DAA', Video: '#C75435', Calendar: '#458B56', News: '#A67B13', Photos: '#7655A2', Notes: '#327B6C', Banking: '#347794', Weather: '#3974AA', Camera: '#B44D4D', Settings: '#65727B', Phone: '#3D8758' };
+    const formatDuration = (hours) => {
+      const totalMinutes = Math.round(hours * 60);
+      const wholeHours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      if (wholeHours && minutes) return `${wholeHours} h ${minutes} min`;
+      if (wholeHours) return `${wholeHours} h`;
+      return `${minutes} min`;
+    };
+
+    document.querySelectorAll('.screen-wrap').forEach((screen) => {
+      const control = screen.querySelector('.period-control');
+      if (!control) return;
+      const isActivity = screen.getAttribute('aria-label').includes('activity heatmap');
+      const total = screen.querySelector('[data-period-total]');
+      const label = screen.querySelector('[data-period-label]');
+      const setPeriod = (period) => {
+        control.querySelectorAll('[data-period]').forEach((button) => {
+          const selected = button.dataset.period === period;
+          button.classList.toggle('selected', selected);
+          button.setAttribute('aria-pressed', String(selected));
+        });
+        const periodName = periodLabels[period];
+        if (total) total.textContent = `${isActivity ? 'Focus time' : 'App screen time'} · ${(isActivity ? activityTotals : screenTimeTotals)[period]}`;
+        if (label) label.textContent = isActivity ? `${periodName} · completed Dream Force focus sessions` : `${periodName} · all apps reported by Android`;
+        screen.querySelectorAll('.period-caption').forEach((element) => { element.textContent = periodName; });
+        screen.querySelectorAll('.category-duration').forEach((value) => {
+          const hours = Number(value.dataset[period]);
+          value.textContent = `${formatDuration(hours)}`;
+        });
+        const divisor = { day: 365, week: 52, month: 12, year: 1 }[period];
+        screen.querySelectorAll('.app-duration').forEach((value) => {
+          const annualHours = Number(value.dataset.year);
+          value.textContent = `${formatDuration(annualHours / divisor)} · ${value.dataset.share}% of observed`;
+          const appName = value.closest('.activity-row').querySelector('.activity-copy strong').textContent;
+          value.closest('.activity-row').querySelector('.usage-bar span').style.setProperty('--item-color', appColors[appName] ?? '#7B8790');
+        });
+        const chartItems = [...screen.querySelectorAll('[data-chart-item]')];
+        const chartValues = chartItems.map((item) => {
+          const amount = Number(item.dataset[period] ?? Number(item.dataset.year) / divisor);
+          const valueLabel = item.querySelector('strong');
+          if (valueLabel) valueLabel.textContent = formatDuration(amount);
+          return { amount, color: item.dataset.color };
+        });
+        const chartTotal = chartValues.reduce((sum, item) => sum + item.amount, 0);
+        const chart = screen.querySelector('[data-donut]');
+        if (chart && chartTotal > 0) {
+          let end = 0;
+          const stops = chartValues.map((item) => {
+            const start = end;
+            end += item.amount / chartTotal * 100;
+            return `${item.color} ${start}% ${end}%`;
+          });
+          chart.style.setProperty('--chart-stops', stops.join(', '));
+          chart.querySelector('[data-chart-total]').textContent = formatDuration(chartTotal);
+        }
+      };
+      control.querySelectorAll('[data-period]').forEach((button) => button.addEventListener('click', () => setPeriod(button.dataset.period)));
+      setPeriod('year');
+    });
+
+    // Sample-only heatmap data for the design reference. Production values come
+    // from Dream Force focus sessions and Android's aggregate UsageStats API.
+    const sampleYear = 2026;
+    const lastSampleDate = Date.UTC(2026, 10, 10);
+    const heatmapValues = [0, 15, -45, 90, -120, 150, -180, 25, -240, 0, 75, -30, 210, -60, 0, 135, -20];
+    const shortDate = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+    document.querySelectorAll('.heatmap-grid').forEach((grid) => {
+      const firstDay = new Date(Date.UTC(sampleYear, 0, 1)).getUTCDay();
+      for (let i = 0; i < firstDay; i++) {
+        const empty = document.createElement('span');
+        empty.className = 'heat-cell empty';
+        empty.setAttribute('aria-hidden', 'true');
+        grid.append(empty);
+      }
+      const daysInYear = (Date.UTC(sampleYear + 1, 0, 1) - Date.UTC(sampleYear, 0, 1)) / 86400000;
+      for (let i = 0; i < daysInYear; i++) {
+        const date = new Date(Date.UTC(sampleYear, 0, i + 1));
+        if (date.getTime() > lastSampleDate) {
+          const future = document.createElement('span');
+          future.className = 'heat-cell future';
+          future.title = `${shortDate.format(date)} · No data yet`;
+          future.setAttribute('aria-hidden', 'true');
+          grid.append(future);
+          continue;
+        }
+        const isSampleSelection = date.getUTCMonth() === 10 && date.getUTCDate() === 10;
+        const deltaMinutes = isSampleSelection ? 120 : heatmapValues[(i * 7 + Math.floor(i / 9)) % heatmapValues.length];
+        const cell = document.createElement('span');
+        const magnitude = Math.abs(deltaMinutes);
+        const shade = magnitude === 0 ? 0 : magnitude < 30 ? 1 : magnitude < 60 ? 2 : magnitude < 120 ? 3 : 4;
+        const direction = deltaMinutes > 0 ? 'green' : 'red';
+        const hours = Math.floor(magnitude / 60);
+        const minutes = magnitude % 60;
+        const amount = hours ? `${hours} h${minutes ? ` ${minutes} min` : ''}` : `${minutes} min`;
+        cell.className = `heat-cell ${shade === 0 ? 'neutral' : `${direction}-${shade}`}`;
+        cell.title = `${shortDate.format(date)} · Activity minus screen time: ${deltaMinutes > 0 ? '+' : deltaMinutes < 0 ? '−' : ''}${amount}`;
+        cell.setAttribute('aria-hidden', 'true');
+        grid.append(cell);
+      }
+    });
+  </script>
+</body>
+</html>
