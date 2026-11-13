@@ -1,7 +1,7 @@
 import { sessionEventSchema } from '@dream-force/api-contract';
 import { NextResponse } from 'next/server';
 
-import { submitSessionEvent } from '@/src/application/mvp/mvp-service';
+import { submitSessionEvent } from '@/src/APP.API/composition-root';
 import { parseJson, problemResponse, requireAuthenticatedUser } from '@/src/interfaces/http/auth';
 
 export const runtime = 'nodejs';

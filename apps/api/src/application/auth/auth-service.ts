@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
 
-import { createDatabaseClient } from '../../infrastructure/database/neon';
+import { createDatabaseClient } from '../../infrastructure/database/data-source';
 import { readServerEnvironment } from '../../infrastructure/env';
 
 export type UserRole = 'user' | 'admin';

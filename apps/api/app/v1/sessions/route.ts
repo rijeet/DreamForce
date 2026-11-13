@@ -1,7 +1,7 @@
 import { createSessionSchema } from '@dream-force/api-contract';
 import { NextResponse } from 'next/server';
 
-import { createFocusSession } from '@/src/application/mvp/mvp-service';
+import { createFocusSession } from '@/src/APP.API/composition-root';
 import { HttpProblem, parseJson, problemResponse, requireAuthenticatedUser } from '@/src/interfaces/http/auth';
 
 export const runtime = 'nodejs';

@@ -1,7 +1,7 @@
 import { dailyReviewSchema } from '@dream-force/api-contract';
 import { NextResponse } from 'next/server';
 
-import { getDailyReview, upsertDailyReview } from '@/src/application/mvp/mvp-service';
+import { getDailyReview, upsertDailyReview } from '@/src/APP.API/composition-root';
 import { parseJson, problemResponse, requireAuthenticatedUser } from '@/src/interfaces/http/auth';
 
 export const runtime = 'nodejs';

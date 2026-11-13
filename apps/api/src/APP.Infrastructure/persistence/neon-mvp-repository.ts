@@ -13,8 +13,9 @@ import type {
   weeklyPlanSchema,
 } from '@dream-force/api-contract';
 
-import { createDatabaseClient } from '../../infrastructure/database/neon';
+import { createDatabaseClient } from '../../infrastructure/database/data-source';
 import { HttpProblem } from '../../interfaces/http/auth';
+import type { MvpRepository } from '../../APP.Entity/ports/mvp-repository';
 
 type ProfileInput = z.infer<typeof updateProfileSchema>;
 type SettingsInput = z.infer<typeof updateSettingsSchema>;
@@ -196,3 +197,10 @@ export async function upsertDailyReview(userId: string, localDate: string, input
 }
 
 export function requestHash(value: unknown) { return createHash('sha256').update(JSON.stringify(value)).digest(); }
+
+export const neonMvpRepository: MvpRepository = {
+  getProfile, updateProfile, updateSettings, listActivities, createActivity,
+  patchActivity, archiveActivity, createFocusSession, getFocusSession,
+  submitSessionEvent, listPlans, createPlan, getPlan, getDailyReview,
+  upsertDailyReview,
+};

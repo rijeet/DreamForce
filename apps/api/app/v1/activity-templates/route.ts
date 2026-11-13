@@ -1,7 +1,7 @@
 import { activityTemplateSchema } from '@dream-force/api-contract';
 import { NextResponse } from 'next/server';
 
-import { createActivity, listActivities } from '@/src/application/mvp/mvp-service';
+import { createActivity, listActivities } from '@/src/APP.API/composition-root';
 import { parseJson, problemResponse, requireAuthenticatedUser } from '@/src/interfaces/http/auth';
 
 export const runtime = 'nodejs';

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { createRedisClient } from '@/src/infrastructure/cache/redis';
-import { createDatabaseClient } from '@/src/infrastructure/database/neon';
+import { createDatabaseClient } from '@/src/infrastructure/database/data-source';
 
 export const runtime = 'nodejs';
 

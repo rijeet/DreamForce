@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { getFocusSession } from '@/src/application/mvp/mvp-service';
+import { getFocusSession } from '@/src/APP.API/composition-root';
 import { problemResponse, requireAuthenticatedUser } from '@/src/interfaces/http/auth';
 
 export const runtime = 'nodejs';

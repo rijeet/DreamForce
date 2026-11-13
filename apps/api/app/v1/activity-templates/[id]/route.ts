@@ -1,7 +1,7 @@
 import { patchActivityTemplateSchema } from '@dream-force/api-contract';
 import { NextResponse } from 'next/server';
 
-import { archiveActivity, patchActivity } from '@/src/application/mvp/mvp-service';
+import { archiveActivity, patchActivity } from '@/src/APP.API/composition-root';
 import { parseJson, problemResponse, requireAuthenticatedUser } from '@/src/interfaces/http/auth';
 
 export const runtime = 'nodejs';
