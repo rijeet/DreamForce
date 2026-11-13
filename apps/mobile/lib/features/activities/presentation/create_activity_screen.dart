@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dream_force/features/activities/domain/activity_draft.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -21,12 +23,43 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
   var _seconds = 3600;
   var _unit = 'Minutes';
   var _icon = Icons.bolt_outlined;
+  Timer? _repeatTimer;
 
   @override
   void dispose() {
+    _repeatTimer?.cancel();
     _nameController.dispose();
     super.dispose();
   }
+
+  void _adjust(int direction) {
+    setState(() => _seconds = (_seconds + direction * _step).clamp(10, 28800));
+  }
+
+  void _startRepeat(int direction) {
+    _repeatTimer?.cancel();
+    _repeatTimer = Timer.periodic(const Duration(milliseconds: 120), (_) {
+      if (mounted) _adjust(direction);
+    });
+  }
+
+  void _stopRepeat() {
+    _repeatTimer?.cancel();
+    _repeatTimer = null;
+  }
+
+  Widget _stepperButton({required int direction, required IconData icon}) =>
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _adjust(direction),
+        onLongPressStart: (_) => _startRepeat(direction),
+        onLongPressEnd: (_) => _stopRepeat(),
+        onLongPressCancel: _stopRepeat,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Icon(icon, color: Theme.of(context).colorScheme.primary),
+        ),
+      );
 
   void _save() {
     if (_formKey.currentState!.validate()) {
@@ -91,11 +124,9 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
               const SizedBox(height: 8),
               Row(
                 children: [
-                  IconButton(
-                    onPressed: _seconds > _step
-                        ? () => setState(() => _seconds -= _step)
-                        : null,
-                    icon: const Icon(Icons.remove_circle_outline),
+                  _stepperButton(
+                    direction: -1,
+                    icon: Icons.remove_circle_outline,
                   ),
                   Expanded(
                     child: Center(
@@ -105,12 +136,7 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: _seconds < 28800
-                        ? () => setState(() => _seconds += _step)
-                        : null,
-                    icon: const Icon(Icons.add_circle_outline),
-                  ),
+                  _stepperButton(direction: 1, icon: Icons.add_circle_outline),
                 ],
               ),
               SegmentedButton<String>(

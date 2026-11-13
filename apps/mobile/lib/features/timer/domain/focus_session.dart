@@ -8,6 +8,12 @@ import 'dart:convert';
 
 enum SessionStatus { running, paused, completed, cancelled }
 
+class SessionPhase {
+  const SessionPhase(this.name, this.seconds);
+  final String name;
+  final int seconds;
+}
+
 class FocusSession extends ChangeNotifier {
   FocusSession(this.activity, {this.remoteId, int version = 1})
     : startedAt = DateTime.now(),
@@ -24,24 +30,32 @@ class FocusSession extends ChangeNotifier {
   var phaseIndex = 0;
   var status = SessionStatus.running;
   DateTime? pausedAt;
-  List<_Phase> get _phases {
+  List<SessionPhase> get _phases {
     if (activity.plannedSeconds == 90 * 60) {
       return const [
-        _Phase('Focus', 2400),
-        _Phase('Rest', 300),
-        _Phase('Focus', 2400),
-        _Phase('Rest', 300),
+        SessionPhase('Focus', 2400),
+        SessionPhase('Rest', 300),
+        SessionPhase('Focus', 2400),
+        SessionPhase('Rest', 300),
       ];
     }
     final total = activity.plannedSeconds;
     final focus = (total * 5 / 6).round();
-    return [_Phase('Focus', focus), _Phase('Rest', total - focus)];
+    return [SessionPhase('Focus', focus), SessionPhase('Rest', total - focus)];
   }
 
   String get phaseName =>
       status == SessionStatus.completed || status == SessionStatus.cancelled
       ? 'Finished'
       : _phases[phaseIndex].name;
+  int get phaseCount => _phases.length;
+  int get currentCycle => _phases
+      .take(phaseIndex + 1)
+      .where((phase) => phase.name == 'Focus')
+      .length;
+  int get cycleCount => _phases.where((phase) => phase.name == 'Focus').length;
+  SessionPhase? get nextPhase =>
+      phaseIndex + 1 < _phases.length ? _phases[phaseIndex + 1] : null;
   int get remainingSeconds =>
       (status == SessionStatus.paused && pausedAt != null
               ? _phaseEndsAt.difference(pausedAt!)
@@ -52,8 +66,11 @@ class FocusSession extends ChangeNotifier {
       ? 1
       : 1 - remainingSeconds / _phases[phaseIndex].seconds;
   void _advance() {
-    if (status != SessionStatus.running ||
-        DateTime.now().isBefore(_phaseEndsAt)) {
+    if (status != SessionStatus.running) {
+      return;
+    }
+    if (DateTime.now().isBefore(_phaseEndsAt)) {
+      notifyListeners();
       return;
     }
     if (phaseIndex == _phases.length - 1) {
@@ -70,22 +87,9 @@ class FocusSession extends ChangeNotifier {
   }
 
   Future<void> togglePause() async {
-    if (remoteId != null) {
-      final event = status == SessionStatus.running ? 'pause' : 'resume';
-      final response = await const DreamForceAuthApi().request(
-        'POST',
-        '/v1/sessions/$remoteId/events',
-        body: {
-          'clientEventId': DreamForceAuthApi.newRequestId(),
-          'eventType': event,
-          'expectedVersion': _remoteVersion,
-        },
-      );
-      _remoteVersion =
-          (jsonDecode(response.body) as Map<String, dynamic>)['version']
-              as int? ??
-          _remoteVersion + 1;
-    }
+    final wasRunning = status == SessionStatus.running;
+    final previousEnd = _phaseEndsAt;
+    final previousPausedAt = pausedAt;
     if (status == SessionStatus.running) {
       status = SessionStatus.paused;
       pausedAt = DateTime.now();
@@ -95,6 +99,34 @@ class FocusSession extends ChangeNotifier {
       status = SessionStatus.running;
     }
     notifyListeners();
+    if (remoteId == null) return;
+    try {
+      final response = await const DreamForceAuthApi().request(
+        'POST',
+        '/v1/sessions/$remoteId/events',
+        body: {
+          'clientEventId': DreamForceAuthApi.newRequestId(),
+          'eventType': wasRunning ? 'pause' : 'resume',
+          'expectedVersion': _remoteVersion,
+        },
+      );
+      _remoteVersion =
+          (jsonDecode(response.body) as Map<String, dynamic>)['version']
+              as int? ??
+          _remoteVersion + 1;
+    } catch (_) {
+      if (wasRunning) {
+        status = SessionStatus.running;
+        pausedAt = null;
+      } else {
+        status = SessionStatus.paused;
+        pausedAt = DateTime.now();
+        _phaseEndsAt = previousEnd;
+      }
+      if (previousPausedAt != null && !wasRunning) pausedAt = previousPausedAt;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> cancel() async {
@@ -124,10 +156,4 @@ class FocusSession extends ChangeNotifier {
     _ticker.cancel();
     super.dispose();
   }
-}
-
-class _Phase {
-  const _Phase(this.name, this.seconds);
-  final String name;
-  final int seconds;
 }

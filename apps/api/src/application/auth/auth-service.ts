@@ -188,20 +188,29 @@ export async function rotateRefreshToken(refreshToken: string): Promise<SessionT
   const current = rows[0];
   if (!current) throw new AuthenticationError('REFRESH_TOKEN_INVALID');
   const replacementId = randomUUID();
-  const revoked = (await sql`
-    UPDATE auth_sessions
-    SET revoked_at = now(), replaced_by_session_id = ${replacementId}::uuid
-    WHERE id = ${current.session_id}::uuid AND revoked_at IS NULL
-    RETURNING id
-  `) as { id: string }[];
-  if (!revoked[0]) throw new AuthenticationError('REFRESH_TOKEN_REPLAYED');
-
   const nextRefreshToken = randomBytes(48).toString('base64url');
   const expiresAt = new Date(Date.now() + refreshTokenLifetimeDays * 86400 * 1000);
-  await sql`
-    INSERT INTO auth_sessions (id, user_id, refresh_token_hash, expires_at)
-    VALUES (${replacementId}::uuid, ${current.id}::uuid, ${refreshTokenHash(nextRefreshToken)}, ${expiresAt})
-  `;
+  const rotated = (await sql`
+    WITH revoked AS (
+      UPDATE auth_sessions
+      SET revoked_at = now()
+      WHERE id = ${current.session_id}::uuid AND revoked_at IS NULL
+      RETURNING user_id
+    ), replacement AS (
+      INSERT INTO auth_sessions (id, user_id, refresh_token_hash, expires_at)
+      SELECT ${replacementId}::uuid, user_id, ${refreshTokenHash(nextRefreshToken)}, ${expiresAt}
+      FROM revoked
+      RETURNING id
+    ), linked AS (
+      UPDATE auth_sessions AS old_session
+      SET replaced_by_session_id = replacement.id
+      FROM replacement
+      WHERE old_session.id = ${current.session_id}::uuid
+      RETURNING old_session.id
+    )
+    SELECT id FROM linked
+  `) as { id: string }[];
+  if (!rotated[0]) throw new AuthenticationError('REFRESH_TOKEN_REPLAYED');
   const user = assertActive(current);
   return { accessToken: await accessTokenFor(user, replacementId), refreshToken: nextRefreshToken, expiresIn: accessTokenLifetimeSeconds };
 }
@@ -215,10 +224,20 @@ export async function revokeRefreshToken(refreshToken: string) {
 }
 
 export async function authenticateAccessToken(token: string) {
-  const verified = await jwtVerify(token, secretKey(), {
-    issuer: 'dream-force-api',
-    audience: 'dream-force-mobile',
-  });
+  let verified;
+  try {
+    verified = await jwtVerify(token, secretKey(), {
+      issuer: 'dream-force-api',
+      audience: 'dream-force-mobile',
+    });
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error
+      ? String(error.code)
+      : '';
+    throw new AuthenticationError(
+      code === 'ERR_JWT_EXPIRED' ? 'ACCESS_TOKEN_EXPIRED' : 'ACCESS_TOKEN_INVALID',
+    );
+  }
   const role = verified.payload.role;
   if (!verified.payload.sub || (role !== 'user' && role !== 'admin')) {
     throw new AuthenticationError('ACCESS_TOKEN_INVALID');

@@ -5,99 +5,171 @@ class TimerScreen extends StatelessWidget {
   const TimerScreen({required this.session, required this.onDelete, super.key});
   final FocusSession session;
   final VoidCallback onDelete;
-  String _time(int seconds) =>
-      '${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
+
+  String _time(int seconds) {
+    if (seconds >= 3600) {
+      final hours = seconds ~/ 3600;
+      final minutes = (seconds % 3600) ~/ 60;
+      final remainder = seconds % 60;
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${remainder.toString().padLeft(2, '0')}';
+    }
+    return '${(seconds ~/ 60).toString().padLeft(2, '0')}:${(seconds % 60).toString().padLeft(2, '0')}';
+  }
+
+  String _duration(int seconds) {
+    if (seconds >= 3600) {
+      final hours = seconds ~/ 3600;
+      final minutes = (seconds % 3600) ~/ 60;
+      return minutes == 0 ? '$hours hr' : '$hours hr $minutes min';
+    }
+    if (seconds >= 60) return '${seconds ~/ 60} min';
+    return '$seconds sec';
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: session,
-    builder: (_, _) => Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    builder: (_, _) {
+      final next = session.nextPhase;
+      final phase = session.phaseName.toUpperCase();
+      final phaseColor = session.phaseName == 'Rest'
+          ? Theme.of(context).colorScheme.secondary
+          : Theme.of(context).colorScheme.primary;
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
         children: [
           Text(
-            session.activity.name,
+            '${session.activity.name} session',
             style: Theme.of(context).textTheme.headlineMedium,
           ),
-          const SizedBox(height: 8),
-          Text(
-            session.phaseName,
-            style: Theme.of(context).textTheme.titleMedium,
+          const SizedBox(height: 4),
+          const Text('Stay with the current block.'),
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 8,
+            children: [
+              Chip(
+                backgroundColor: phaseColor.withValues(alpha: 0.12),
+                label: Text('$phase · CYCLE ${session.currentCycle}'),
+              ),
+              Chip(
+                label: Text('${session.currentCycle} of ${session.cycleCount}'),
+              ),
+            ],
           ),
-          const Spacer(),
-          Center(
-            child: SizedBox(
-              width: 230,
-              height: 230,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  CircularProgressIndicator(
-                    value: session.progress.clamp(0, 1),
-                    strokeWidth: 14,
-                  ),
-                  Text(
-                    _time(session.remainingSeconds),
-                    style: Theme.of(context).textTheme.displayMedium,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Spacer(),
-          if (session.status == SessionStatus.completed)
-            Text(
-              'Great work. Your session is complete.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium,
-            )
-          else if (session.status == SessionStatus.cancelled)
-            const Text(
-              'Session deleted. Elapsed time remains in history.',
-              textAlign: TextAlign.center,
-            )
-          else ...[
-            FilledButton.icon(
-              onPressed: session.togglePause,
-              icon: Icon(
-                session.status == SessionStatus.running
-                    ? Icons.pause
-                    : Icons.play_arrow,
-              ),
-              label: Text(
-                session.status == SessionStatus.running ? 'Pause' : 'Resume',
-              ),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final accepted = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: const Text('Delete session?'),
-                    content: const Text(
-                      'This cancels the current session. Elapsed time is kept in history.',
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 270,
+            child: Center(
+              child: SizedBox(
+                width: 220,
+                height: 220,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox.expand(
+                      child: CircularProgressIndicator(
+                        value: session.progress.clamp(0, 1),
+                        strokeWidth: 9,
+                        backgroundColor: Theme.of(context).colorScheme.primary
+                            .withValues(alpha: 0.12),
+                        color: phaseColor,
+                      ),
                     ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context, false),
-                        child: const Text('Keep session'),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.pop(context, true),
-                        child: const Text('Delete'),
-                      ),
-                    ],
-                  ),
-                );
-                if (accepted ?? false) onDelete();
-              },
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('Delete session'),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _time(session.remainingSeconds),
+                          style: Theme.of(context).textTheme.displayMedium,
+                        ),
+                        Text(
+                          session.status == SessionStatus.paused
+                              ? 'Paused · ${session.phaseName.toLowerCase()} time left'
+                              : '${session.phaseName} time left',
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ],
+          ),
+          Center(
+            child: Text(
+              '${session.activity.name} · ${_duration(session.activity.plannedSeconds)} plan',
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (next != null)
+            Card(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Next: ${next.name} ${next.name == 'Rest' ? 'break' : 'block'} · ${_duration(next.seconds)}',
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: () async {
+              try {
+                await session.togglePause();
+              } catch (error) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Could not sync timer action: $error'),
+                    ),
+                  );
+                }
+              }
+            },
+            child: Text(
+              session.status == SessionStatus.running
+                  ? 'Pause session'
+                  : 'Resume session',
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: () async {
+              final accepted = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text('Delete session?'),
+                  content: const Text(
+                    'This cancels the current session. Elapsed time is kept in history.',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Keep session'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Delete session'),
+                    ),
+                  ],
+                ),
+              );
+              if (accepted ?? false) onDelete();
+            },
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Delete session'),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Your timer continues if you leave this screen. Lock-screen controls depend on device settings.',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
         ],
-      ),
-    ),
+      );
+    },
   );
 }
