@@ -23,8 +23,9 @@ enum _ShellPage {
 }
 
 class AppShell extends StatefulWidget {
-  const AppShell({required this.user, super.key});
+  const AppShell({required this.user, required this.onLogout, super.key});
   final SignedInUser user;
+  final Future<void> Function() onLogout;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -139,7 +140,10 @@ class _AppShellState extends State<AppShell> {
     ),
     _ShellPage.plan => const PlanScreen(),
     _ShellPage.insights => const InsightsScreen(),
-    _ShellPage.profile => ProfileScreen(user: widget.user),
+    _ShellPage.profile => ProfileScreen(
+      user: widget.user,
+      onLogout: widget.onLogout,
+    ),
     _ShellPage.chooseActivity => ChooseActivityScreen(
       activities: _activities,
       onBack: () => setState(() => _page = _ShellPage.today),

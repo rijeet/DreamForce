@@ -5,8 +5,9 @@ import 'package:dream_force/features/auth/data/dream_force_auth_api.dart';
 import 'dart:convert';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({required this.user, super.key});
+  const ProfileScreen({required this.user, required this.onLogout, super.key});
   final SignedInUser user;
+  final Future<void> Function() onLogout;
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
@@ -146,8 +147,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ],
         ),
       ),
+      const SizedBox(height: 12),
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.logout),
+          title: const Text('Log out'),
+          subtitle: const Text('Sign out of Dream Force on this device.'),
+          onTap: _confirmLogout,
+        ),
+      ),
     ],
   );
+
+  Future<void> _confirmLogout() async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text('You can sign in again with your Google account.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+    if (accepted ?? false) await widget.onLogout();
+  }
 
   Future<void> _save() async {
     setState(() {

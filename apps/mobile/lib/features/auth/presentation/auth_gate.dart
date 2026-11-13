@@ -14,7 +14,8 @@ class SignedInUser {
 
 class AuthGate extends StatefulWidget {
   const AuthGate({required this.child, super.key});
-  final Widget Function(SignedInUser user) child;
+  final Widget Function(SignedInUser user, Future<void> Function() onLogout)
+  child;
   @override
   State<AuthGate> createState() => _AuthGateState();
 }
@@ -99,6 +100,28 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
+  Future<void> _logout() async {
+    setState(() => _loading = true);
+    try {
+      await const DreamForceAuthApi().logout();
+    } catch (error) {
+      _error =
+          'Local session cleared; server logout could not be confirmed. (${_safeError(error)})';
+      await const DreamForceAuthApi().clearSession();
+    }
+    try {
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {
+      // Dream Force credentials are already cleared; Google sign-out is best effort.
+    }
+    if (mounted) {
+      setState(() {
+        _user = null;
+        _loading = false;
+      });
+    }
+  }
+
   String _safeError(Object error) {
     final message = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
     return message.length > 180 ? '${message.substring(0, 180)}…' : message;
@@ -107,7 +130,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const SplashScreen();
-    if (_user != null) return widget.child(_user!);
+    if (_user != null) return widget.child(_user!, _logout);
     return AccountScreen(error: _error, loading: _signingIn, onSignIn: _signIn);
   }
 }

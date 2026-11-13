@@ -12,6 +12,8 @@ class DreamForceApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: DreamForceTheme.light(),
     darkTheme: DreamForceTheme.dark(),
-    home: AuthGate(child: (user) => AppShell(user: user)),
+    home: AuthGate(
+      child: (user, onLogout) => AppShell(user: user, onLogout: onLogout),
+    ),
   );
 }

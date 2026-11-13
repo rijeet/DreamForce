@@ -113,6 +113,23 @@ class DreamForceAuthApi {
     await _storage.delete(key: _refreshKey);
   }
 
+  Future<void> logout() async {
+    final refreshToken = await _storage.read(key: _refreshKey);
+    try {
+      if (refreshToken != null) {
+        await _send(
+          () => http.post(
+            Uri.parse('$_baseUrl/v1/auth/logout'),
+            headers: const {'content-type': 'application/json'},
+            body: jsonEncode({'refreshToken': refreshToken}),
+          ),
+        );
+      }
+    } finally {
+      await clearSession();
+    }
+  }
+
   static String newRequestId() {
     final random = Random.secure();
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
