@@ -20,7 +20,9 @@ abstract final class DeviceSettings {
         .map(
           (app) => ScreenTimeApp(
             packageName: app['packageName'] as String? ?? 'Unknown app',
-            duration: Duration(milliseconds: app['durationMillis'] as int? ?? 0),
+            duration: Duration(
+              milliseconds: app['durationMillis'] as int? ?? 0,
+            ),
           ),
         )
         .toList(growable: false);

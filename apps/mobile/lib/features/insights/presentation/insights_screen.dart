@@ -88,7 +88,10 @@ class _InsightsScreenState extends State<InsightsScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Screen time', style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                'Screen time',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(height: 8),
               const Text('Today · on this device'),
               const SizedBox(height: 12),

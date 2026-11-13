@@ -39,7 +39,7 @@ class _AuthGateState extends State<AuthGate> {
         await GoogleSignIn.instance.initialize(serverClientId: _serverClientId);
         final account = await GoogleSignIn.instance
             .attemptLightweightAuthentication();
-        if (account != null) {
+        if (account != null && await const DreamForceAuthApi().hasSession()) {
           _user = SignedInUser(
             account.email,
             account.displayName,

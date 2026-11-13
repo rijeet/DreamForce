@@ -1,4 +1,7 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:dream_force/features/auth/data/dream_force_auth_api.dart';
+
+import 'dart:convert';
 
 class PlanScreen extends StatefulWidget {
   const PlanScreen({super.key});
@@ -8,6 +11,7 @@ class PlanScreen extends StatefulWidget {
 
 class _PlanScreenState extends State<PlanScreen> {
   final _items = <String>[];
+  String? _error;
   Future<void> _addPlanItem() async {
     final controller = TextEditingController();
     final name = await showDialog<String>(
@@ -35,7 +39,21 @@ class _PlanScreenState extends State<PlanScreen> {
       ),
     );
     controller.dispose();
-    if (name != null && name.isNotEmpty) setState(() => _items.add(name));
+    if (name != null && name.isNotEmpty) {
+      try {
+        final response = await const DreamForceAuthApi().request(
+          'POST',
+          '/v1/plans',
+          body: {'name': name, 'timezone': 'Asia/Dhaka', 'entries': <Object>[]},
+        );
+        final plan = jsonDecode(response.body) as Map<String, dynamic>;
+        if (mounted) {
+          setState(() => _items.add(plan['name'] as String? ?? name));
+        }
+      } catch (error) {
+        if (mounted) setState(() => _error = 'Could not save plan: $error');
+      }
+    }
   }
 
   @override
@@ -45,6 +63,8 @@ class _PlanScreenState extends State<PlanScreen> {
       Text('Plan', style: Theme.of(context).textTheme.headlineMedium),
       const SizedBox(height: 4),
       const Text('Build a simple, reusable week.'),
+      if (_error != null)
+        Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!)),
       const SizedBox(height: 20),
       for (final item in _items)
         Card(

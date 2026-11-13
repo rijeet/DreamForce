@@ -7,6 +7,10 @@ import 'package:dream_force/features/plan/presentation/plan_screen.dart';
 import 'package:dream_force/features/profile/presentation/profile_screen.dart';
 import 'package:dream_force/features/today/presentation/today_screen.dart';
 import 'package:dream_force/features/timer/domain/focus_session.dart';
+import 'package:dream_force/features/auth/data/dream_force_auth_api.dart';
+
+import 'dart:convert';
+
 import 'package:material_ui/material_ui.dart';
 
 enum _ShellPage {
@@ -66,16 +70,54 @@ class _AppShellState extends State<AppShell> {
     };
   });
 
-  void _saveActivity(ActivityDraft activity) => setState(() {
-    _activities.add(activity);
-    _page = _ShellPage.chooseActivity;
-  });
+  Future<void> _saveActivity(ActivityDraft activity) async {
+    final response = await const DreamForceAuthApi().request(
+      'POST',
+      '/v1/activity-templates',
+      body: {
+        'name': activity.name,
+        'iconKey': 'focus',
+        'plannedMinutes': activity.plannedMinutes.clamp(1, 480),
+      },
+    );
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    setState(() {
+      _activities.add(
+        ActivityDraft.seconds(
+          name: activity.name,
+          icon: activity.icon,
+          plannedSeconds: activity.plannedSeconds,
+          templateId: body['id'] as String?,
+        ),
+      );
+      _page = _ShellPage.chooseActivity;
+    });
+  }
 
-  void _startSession(ActivityDraft activity) => setState(() {
-    _session?.dispose();
-    _session = FocusSession(activity);
-    _page = _ShellPage.today;
-  });
+  Future<void> _startSession(ActivityDraft activity) async {
+    final response = await const DreamForceAuthApi().request(
+      'POST',
+      '/v1/sessions',
+      idempotencyKey: DreamForceAuthApi.newRequestId(),
+      body: {
+        'templateId': activity.templateId,
+        'name': activity.name,
+        'iconKey': 'focus',
+        'plannedMinutes': activity.plannedMinutes.clamp(1, 480),
+        'timezone': 'Asia/Dhaka',
+      },
+    );
+    final remote = jsonDecode(response.body) as Map<String, dynamic>;
+    setState(() {
+      _session?.dispose();
+      _session = FocusSession(
+        activity,
+        remoteId: remote['id'] as String?,
+        version: remote['version'] as int? ?? 1,
+      );
+      _page = _ShellPage.today;
+    });
+  }
 
   void _deleteSession() => setState(() {
     if (_session?.status != SessionStatus.completed) _session?.cancel();

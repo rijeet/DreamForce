@@ -1,5 +1,8 @@
 import 'package:dream_force/features/auth/presentation/auth_gate.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:dream_force/features/auth/data/dream_force_auth_api.dart';
+
+import 'dart:convert';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({required this.user, super.key});
@@ -10,6 +13,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   var _editing = false;
+  var _saving = false;
+  String? _error;
   final _displayName = TextEditingController();
   final _gender = TextEditingController();
   final _birthDate = TextEditingController();
@@ -65,9 +70,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _field(_profession, 'Profession'),
                     _field(_timezone, 'Time zone'),
                     const SizedBox(height: 8),
+                    if (_error != null) Text(_error!),
                     FilledButton(
-                      onPressed: () => setState(() => _editing = false),
-                      child: const Text('Save profile'),
+                      onPressed: _saving ? null : _save,
+                      child: Text(_saving ? 'Saving…' : 'Save profile'),
                     ),
                   ],
                 )
@@ -142,6 +148,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     ],
   );
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final response = await const DreamForceAuthApi().request(
+        'PATCH',
+        '/v1/me',
+        body: {
+          'profile': {
+            'displayName': _displayName.text.trim().isEmpty
+                ? null
+                : _displayName.text.trim(),
+            'gender': _gender.text.trim().isEmpty ? null : _gender.text.trim(),
+            'dateOfBirth': _birthDate.text.trim().isEmpty
+                ? null
+                : _birthDate.text.trim(),
+            'country': _country.text.trim().isEmpty
+                ? null
+                : _country.text.trim(),
+            'city': _city.text.trim().isEmpty ? null : _city.text.trim(),
+            'profession': _profession.text.trim().isEmpty
+                ? null
+                : _profession.text.trim(),
+            'timezone': _timezone.text.trim(),
+          },
+        },
+      );
+      final profile = jsonDecode(response.body) as Map<String, dynamic>;
+      setState(() {
+        _displayName.text =
+            profile['displayName'] as String? ?? _displayName.text;
+        _gender.text = profile['gender'] as String? ?? '';
+        _birthDate.text =
+            profile['dateOfBirth']?.toString().split('T').first ?? '';
+        _country.text = profile['country'] as String? ?? '';
+        _city.text = profile['city'] as String? ?? '';
+        _profession.text = profile['profession'] as String? ?? '';
+        _timezone.text = profile['timezone'] as String? ?? _timezone.text;
+        _editing = false;
+      });
+    } catch (error) {
+      setState(() => _error = 'Could not save profile: $error');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Widget _field(
     TextEditingController controller,
     String label, {
