@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
@@ -17,12 +18,15 @@ class DreamForceAuthApi {
   static const _refreshKey = 'dream_force_refresh_token';
   static const _timeout = Duration(seconds: 25);
 
-  Future<void> exchangeGoogleIdToken(String idToken) async {
+  Future<void> exchangeGoogleIdToken(String idToken, {String? timezone}) async {
+    if (kDebugMode) await checkReadiness();
+    final requestBody = <String, String>{'idToken': idToken};
+    if (timezone != null) requestBody['timezone'] = timezone;
     final response = await _send(
       () => http.post(
         Uri.parse('$_baseUrl/v1/auth/google'),
         headers: const {'content-type': 'application/json'},
-        body: jsonEncode({'idToken': idToken}),
+        body: jsonEncode(requestBody),
       ),
     );
     if (response.statusCode != 201) {
@@ -42,6 +46,24 @@ class DreamForceAuthApi {
     await _storage.write(
       key: _refreshKey,
       value: tokens['refreshToken'] as String,
+    );
+  }
+
+  Future<void> checkReadiness() async {
+    final response = await _send(
+      () => http.get(Uri.parse('$_baseUrl/v1/ready')),
+    );
+    if (response.statusCode == 200) return;
+    if (response.statusCode == 503) {
+      final body = _decodeObject(response.body);
+      final database = body['database'] == 'ok' ? 'connected' : 'not connected';
+      if (database == 'connected') return;
+      throw AuthApiException(
+        'Dream Force database is not connected in this development environment. Check the API terminal and apps/api/.env.local.',
+      );
+    }
+    throw AuthApiException(
+      'Backend readiness check failed (HTTP ${response.statusCode}).',
     );
   }
 

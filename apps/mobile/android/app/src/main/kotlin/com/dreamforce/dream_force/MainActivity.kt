@@ -7,6 +7,7 @@ import android.os.Process
 import android.provider.Settings
 import android.os.Build
 import java.util.Calendar
+import java.util.TimeZone
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -19,7 +20,8 @@ class MainActivity : FlutterActivity() {
                 "openUsageAccessSettings" -> { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); result.success(null) }
                 "openNotificationSettings" -> { startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)); result.success(null) }
                 "hasUsageAccess" -> result.success(hasUsageAccess())
-                "getTodayScreenTime" -> result.success(todayScreenTime())
+                "getDeviceTimezone" -> result.success(TimeZone.getDefault().id)
+                "getScreenTime" -> result.success(screenTime(call.argument<String>("period") ?: "day"))
                 else -> result.notImplemented()
             }
         }
@@ -36,30 +38,47 @@ class MainActivity : FlutterActivity() {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    private fun todayScreenTime(): Map<String, Any> {
+    private fun screenTime(period: String): Map<String, Any> {
         val permitted = hasUsageAccess()
         if (!permitted) return mapOf("hasPermission" to false, "totalMillis" to 0L, "apps" to emptyList<Map<String, Any>>())
 
-        val start = Calendar.getInstance().apply {
+        val calendar = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
+        }
+        when (period) {
+            "week" -> {
+                calendar.firstDayOfWeek = Calendar.MONDAY
+                val offset = (calendar.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
+                calendar.add(Calendar.DAY_OF_YEAR, -offset)
+            }
+            "month" -> calendar.set(Calendar.DAY_OF_MONTH, 1)
+            "year" -> calendar.set(Calendar.DAY_OF_YEAR, 1)
+        }
+        val start = calendar.timeInMillis
         val end = System.currentTimeMillis()
         val manager = getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
         val usage = manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
             .orEmpty()
-            .filter { it.totalTimeInForeground > 0 && it.packageName != packageName }
+            .filter { it.totalTimeInForeground > 0 }
             .groupBy { it.packageName }
             .map { (name, rows) -> name to rows.sumOf { it.totalTimeInForeground } }
             .sortedByDescending { it.second }
+        val topApps = usage.take(9).map { (name, duration) ->
+            mapOf("packageName" to name, "durationMillis" to duration)
+        }
+        val otherDuration = usage.drop(9).sumOf { it.second }
+        val apps = topApps + if (otherDuration > 0) {
+            listOf(mapOf("packageName" to "Other apps", "durationMillis" to otherDuration))
+        } else {
+            emptyList()
+        }
         return mapOf(
             "hasPermission" to true,
             "totalMillis" to usage.sumOf { it.second },
-            "apps" to usage.take(10).map { (name, duration) ->
-                mapOf("packageName" to name, "durationMillis" to duration)
-            },
+            "apps" to apps,
         )
     }
 }

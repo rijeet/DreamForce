@@ -7,6 +7,15 @@ export const healthResponseSchema = z.object({
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
+export const timezoneSchema = z.string().min(1).max(64).refine((timezone) => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}, 'Must be a valid IANA time zone');
+
 export const googleAuthorizationCodeSchema = z.object({
   authorizationCode: z.string().min(1).max(4096),
   codeVerifier: z.string().min(43).max(128),
@@ -14,6 +23,7 @@ export const googleAuthorizationCodeSchema = z.object({
 
 export const googleIdTokenSchema = z.object({
   idToken: z.string().min(20).max(8192),
+  timezone: timezoneSchema.optional(),
 });
 
 // Android sends a Google-issued ID token. Keep the PKCE variant for clients
@@ -42,8 +52,6 @@ export type GoogleSignIn = z.infer<typeof googleSignInSchema>;
 export type AdminSignIn = z.infer<typeof adminSignInSchema>;
 
 export const uuidSchema = z.string().uuid();
-export const timezoneSchema = z.string().min(1).max(64);
-
 export const updateProfileSchema = z.object({
   displayName: z.string().trim().min(1).max(80).nullable().optional(),
   avatarUrl: z.string().url().max(2048).nullable().optional(),

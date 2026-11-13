@@ -1,5 +1,10 @@
+import 'dart:convert';
+
 import 'package:dream_force/core/platform/device_settings.dart';
+import 'package:dream_force/features/auth/data/dream_force_auth_api.dart';
 import 'package:material_ui/material_ui.dart';
+
+enum _Period { day, week, month, year }
 
 class InsightsScreen extends StatefulWidget {
   const InsightsScreen({super.key});
@@ -10,15 +15,19 @@ class InsightsScreen extends StatefulWidget {
 
 class _InsightsScreenState extends State<InsightsScreen>
     with WidgetsBindingObserver {
-  ScreenTimeSummary? _screenTime;
-  bool _loading = true;
+  final _api = const DreamForceAuthApi();
+  var _screen = 0;
+  var _period = _Period.week;
+  var _loading = true;
   String? _error;
+  Map<String, dynamic>? _activity;
+  ScreenTimeSummary? _screenTime;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadScreenTime();
+    _load();
   }
 
   @override
@@ -29,118 +38,630 @@ class _InsightsScreenState extends State<InsightsScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _loadScreenTime();
+    if (state == AppLifecycleState.resumed && _screen == 1) _loadScreenTime();
   }
 
-  Future<void> _loadScreenTime() async {
+  Future<void> _load() async =>
+      _screen == 0 ? _loadActivity() : _loadScreenTime();
+
+  Future<void> _loadActivity() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final data = await DeviceSettings.getTodayScreenTime();
+      final response = await _api.request(
+        'GET',
+        '/v1/insights/activity?period=${_period.name}',
+      );
+      final value = jsonDecode(response.body) as Map<String, dynamic>;
       if (mounted) {
         setState(() {
-          _screenTime = data;
+          _activity = value;
           _loading = false;
-          _error = null;
         });
       }
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         setState(() {
+          _error = _readableError(error);
           _loading = false;
-          _error = 'Could not read screen time from Android.';
         });
       }
     }
   }
 
-  Future<void> _openUsageAccessSettings() async {
-    await DeviceSettings.openUsageAccessSettings();
+  Future<void> _loadScreenTime() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final data = await DeviceSettings.getScreenTime(_period.name);
+      if (mounted) {
+        setState(() {
+          _screenTime = data;
+          _loading = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = 'Could not read screen time from Android: $error';
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  String _readableError(Object error) => error is AuthApiException
+      ? error.message
+      : 'Could not load activity insights. Check your connection and try again.';
+
+  Future<void> _setScreen(int value) async {
+    setState(() {
+      _screen = value;
+    });
+    await _load();
+  }
+
+  Future<void> _setPeriod(_Period period) async {
+    setState(() {
+      _period = period;
+    });
+    await _load();
   }
 
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.all(20),
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
     children: [
-      Text('Insights', style: Theme.of(context).textTheme.headlineMedium),
+      Text(
+        _screen == 0 ? 'Insights' : 'Time insights',
+        style: Theme.of(context).textTheme.headlineMedium,
+      ),
       const SizedBox(height: 4),
-      const Text('Your focused work, one day at a time.'),
-      const SizedBox(height: 20),
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Activity', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              const Text(
-                'Complete your first focus session to see this week’s activity.',
-              ),
-              const SizedBox(height: 12),
-              const LinearProgressIndicator(value: 0),
-            ],
+      Text(
+        _screen == 0
+            ? 'Your focused work, one day at a time.'
+            : 'All-app screen time · Android only',
+      ),
+      const SizedBox(height: 18),
+      SegmentedButton<int>(
+        segments: const [
+          ButtonSegment(
+            value: 0,
+            label: Text('Activity'),
+            icon: Icon(Icons.bolt_outlined),
           ),
-        ),
+          ButtonSegment(
+            value: 1,
+            label: Text('Screen time'),
+            icon: Icon(Icons.pie_chart_outline),
+          ),
+        ],
+        selected: {_screen},
+        onSelectionChanged: (selection) => _setScreen(selection.first),
       ),
       const SizedBox(height: 12),
-      Card(
+      SegmentedButton<_Period>(
+        segments: const [
+          ButtonSegment(value: _Period.day, label: Text('Day')),
+          ButtonSegment(value: _Period.week, label: Text('Week')),
+          ButtonSegment(value: _Period.month, label: Text('Month')),
+          ButtonSegment(value: _Period.year, label: Text('Year')),
+        ],
+        selected: {_period},
+        onSelectionChanged: (selection) => _setPeriod(selection.first),
+      ),
+      const SizedBox(height: 16),
+      if (_loading)
+        const Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(child: CircularProgressIndicator()),
+        )
+      else if (_error != null)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        )
+      else if (_screen == 0)
+        _activityContent(context)
+      else
+        _screenTimeContent(context),
+    ],
+  );
+
+  Widget _activityContent(BuildContext context) {
+    final data = _activity ?? const <String, dynamic>{};
+    final seconds = data['totalFocusSeconds'] as int? ?? 0;
+    final sessions = data['completedSessions'] as int? ?? 0;
+    final days = (data['days'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    final color = Theme.of(context).colorScheme.primary;
+    final maxSeconds = days.fold<int>(
+      1,
+      (max, row) => (row['focusSeconds'] as int? ?? 0) > max
+          ? row['focusSeconds'] as int
+          : max,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          color: Theme.of(context).colorScheme.primaryContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Focused time',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _formatSeconds(seconds),
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      Text(
+                        '$sessions completed ${sessions == 1 ? 'session' : 'sessions'}',
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.timer_outlined, size: 32),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Focus activity',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(_periodLabel),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                if (days.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 18),
+                    child: Center(
+                      child: Text(
+                        'Complete a focus session to see your activity.',
+                      ),
+                    ),
+                  )
+                else
+                  SizedBox(
+                    height: 142,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: days.map((row) {
+                        final value = row['focusSeconds'] as int? ?? 0;
+                        final height = value == 0
+                            ? 4.0
+                            : (value / maxSeconds * 94).clamp(8, 94).toDouble();
+                        final date = DateTime.tryParse(
+                          row['date'] as String? ?? '',
+                        );
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 3),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                if (value > 0)
+                                  Text(
+                                    _compactDuration(value),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall,
+                                    maxLines: 1,
+                                  ),
+                                const SizedBox(height: 5),
+                                Container(
+                                  height: height,
+                                  decoration: BoxDecoration(
+                                    color: color,
+                                    borderRadius: BorderRadius.circular(7),
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Text(
+                                  _dateLabel(date),
+                                  style: Theme.of(context).textTheme.labelSmall,
+                                  maxLines: 1,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.public),
+            title: const Text('Local time zone'),
+            subtitle: Text(data['timezone'] as String? ?? 'UTC'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _screenTimeContent(BuildContext context) {
+    final summary = _screenTime;
+    if (summary == null || !summary.hasPermission) {
+      return Card(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Screen time',
-                style: Theme.of(context).textTheme.titleLarge,
+              const Text(
+                'Screen time is available on this Android device after Usage Access is enabled. This data stays on your device.',
               ),
               const SizedBox(height: 8),
-              const Text('Today · on this device'),
-              const SizedBox(height: 12),
-              if (_loading)
-                const Center(child: CircularProgressIndicator())
-              else if (_error != null)
-                Text(_error!)
-              else if (!(_screenTime?.hasPermission ?? false)) ...[
-                const Text(
-                  'Allow Usage Access to see today’s screen time. This data stays on your device.',
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: _openUsageAccessSettings,
-                  child: const Text('Set up Usage Access'),
-                ),
-              ] else ...[
-                Text(
-                  _formatDuration(_screenTime!.total),
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 12),
-                if (_screenTime!.apps.isEmpty)
-                  const Text('No screen time recorded yet today.')
-                else
-                  for (final app in _screenTime!.apps)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      title: Text(app.packageName),
-                      trailing: Text(_formatDuration(app.duration)),
-                    ),
-                TextButton.icon(
-                  onPressed: _loadScreenTime,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Refresh'),
-                ),
-              ],
+              OutlinedButton.icon(
+                onPressed: DeviceSettings.openUsageAccessSettings,
+                icon: const Icon(Icons.settings_outlined),
+                label: const Text('Set up Usage Access'),
+              ),
             ],
           ),
         ),
-      ),
-    ],
+      );
+    }
+    final colors = [
+      Colors.deepOrange,
+      Colors.blue,
+      Colors.deepPurple,
+      Colors.teal,
+      Colors.orange,
+      Colors.blueGrey,
+      Colors.pink,
+      Colors.indigo,
+      Colors.green,
+      Colors.brown,
+    ];
+    final total = summary.total.inMilliseconds;
+    final apps = summary.apps;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Card(
+          color: Theme.of(context).colorScheme.primaryContainer,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'App screen time · ${_periodLabel.toLowerCase()}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _formatDuration(summary.total),
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                Text('Reported by Android · stays on this device'),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Screen time mix',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(_periodLabel),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (total == 0 || apps.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(18),
+                    child: Center(
+                      child: Text('No screen time recorded for this period.'),
+                    ),
+                  )
+                else
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 126,
+                        height: 126,
+                        child: CustomPaint(
+                          painter: _DonutPainter(
+                            apps: apps,
+                            colors: colors,
+                            total: total,
+                            centerLabel: _compactDuration(total ~/ 1000),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          children: [
+                            for (
+                              var index = 0;
+                              index < apps.length && index < 6;
+                              index++
+                            )
+                              _legend(apps[index], colors[index], total),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'All apps by screen time',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            Text(_periodLabel),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (apps.isEmpty)
+          const Card(
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Nothing to show yet.'),
+            ),
+          )
+        else
+          for (var index = 0; index < apps.length; index++)
+            _appTile(apps[index], colors[index % colors.length], total),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _loadScreenTime,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Refresh'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _legend(ScreenTimeApp app, Color color, int total) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      children: [
+        Container(
+          width: 9,
+          height: 9,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            app.packageName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+        Text(
+          _compactDuration(app.duration.inSeconds),
+          style: Theme.of(context).textTheme.labelSmall,
+        ),
+      ],
+    ),
   );
+
+  Widget _appTile(ScreenTimeApp app, Color color, int total) {
+    final fraction = total == 0
+        ? 0.0
+        : (app.duration.inMilliseconds / total).clamp(0, 1).toDouble();
+    final percent = (fraction * 100).toStringAsFixed(1);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: color.withValues(alpha: .14),
+              foregroundColor: color,
+              child: Text(
+                app.packageName.isEmpty
+                    ? '?'
+                    : app.packageName.substring(0, 1).toUpperCase(),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    app.packageName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    '${_formatDuration(app.duration)} · $percent% of observed',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 5),
+                  LinearProgressIndicator(value: fraction, color: color),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String get _periodLabel => switch (_period) {
+    _Period.day => 'Today',
+    _Period.week => 'This week',
+    _Period.month => 'This month',
+    _Period.year => 'This year',
+  };
+  String _dateLabel(DateTime? date) {
+    if (date == null) return '';
+    if (_period == _Period.year) return _monthName(date.month);
+    if (_period == _Period.month) return '${date.day}';
+    return const [
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+      'Sun',
+    ][date.weekday - 1];
+  }
+
+  String _monthName(int month) => const [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ][month - 1];
+  String _formatSeconds(int value) => _formatDuration(Duration(seconds: value));
+  String _compactDuration(int seconds) {
+    final duration = Duration(seconds: seconds);
+    if (duration.inHours > 0) return '${duration.inHours}h';
+    if (duration.inMinutes > 0) return '${duration.inMinutes}m';
+    return '${duration.inSeconds}s';
+  }
 
   String _formatDuration(Duration duration) {
     final hours = duration.inHours;
     final minutes = duration.inMinutes.remainder(60);
-    if (hours == 0) return '$minutes min';
-    return '$hours hr ${minutes.toString().padLeft(2, '0')} min';
+    if (hours > 0) return '$hours h ${minutes.toString().padLeft(2, '0')} min';
+    return '${duration.inMinutes} min';
   }
+}
+
+class _DonutPainter extends CustomPainter {
+  const _DonutPainter({
+    required this.apps,
+    required this.colors,
+    required this.total,
+    required this.centerLabel,
+  });
+  final List<ScreenTimeApp> apps;
+  final List<Color> colors;
+  final int total;
+  final String centerLabel;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final rect = Rect.fromCircle(
+      center: center,
+      radius: size.shortestSide * .43,
+    );
+    final background = Paint()
+      ..color = Colors.black12
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 17;
+    canvas.drawCircle(center, size.shortestSide * .43, background);
+    var start = -3.141592653589793 / 2;
+    for (var index = 0; index < apps.length; index++) {
+      final sweep =
+          apps[index].duration.inMilliseconds / total * 6.283185307179586;
+      final paint = Paint()
+        ..color = colors[index % colors.length]
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 17
+        ..strokeCap = StrokeCap.butt;
+      canvas.drawArc(rect, start, sweep, false, paint);
+      start += sweep;
+    }
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: centerLabel,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+          color: Colors.black87,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: size.width * .7);
+    textPainter.paint(
+      canvas,
+      center - Offset(textPainter.width / 2, textPainter.height / 2),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DonutPainter oldDelegate) =>
+      oldDelegate.apps != apps || oldDelegate.total != total;
 }

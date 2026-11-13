@@ -25,6 +25,7 @@ registry.registerPath({
 });
 
 registry.registerPath({ method: 'get', path: '/v1/ready', tags: ['System'], description: 'Checks required runtime dependencies: Neon PostgreSQL and Upstash Redis.', responses: { 200: { description: 'Neon and Upstash Redis are available' }, 503: { description: 'A required dependency is unavailable' } } });
+registry.registerPath({ method: 'get', path: '/v1/insights/activity', tags: ['Insights'], description: 'Returns completed focus time grouped into the selected period using the user profile timezone.', security: [{ bearerAuth: [] }], request: { query: z.object({ period: z.enum(['day', 'week', 'month', 'year']).optional() }) }, responses: { 200: { description: 'Focus activity insight summary' }, 401: { description: 'Access token required' } } });
 
 const bearerSecurity = [{ bearerAuth: [] }];
 const mvpPaths = [

@@ -6,10 +6,17 @@ import { createDatabaseClient } from '@/src/infrastructure/database/neon';
 export const runtime = 'nodejs';
 
 export async function GET() {
-  try {
-    await Promise.all([createDatabaseClient()`SELECT 1`, createRedisClient().ping()]);
-    return NextResponse.json({ status: 'ready', database: 'ok', redis: 'ok' });
-  } catch {
-    return NextResponse.json({ status: 'not_ready' }, { status: 503 });
-  }
+  const [database, redis] = await Promise.allSettled([
+    Promise.resolve().then(() => createDatabaseClient()`SELECT 1`),
+    Promise.resolve().then(() => createRedisClient().ping()),
+  ]);
+  const checks = {
+    database: database.status === 'fulfilled' ? 'ok' : 'unavailable',
+    redis: redis.status === 'fulfilled' ? 'ok' : 'unavailable',
+  } as const;
+  const ready = checks.database === 'ok' && checks.redis === 'ok';
+  return NextResponse.json(
+    { status: ready ? 'ready' : 'not_ready', ...checks },
+    { status: ready ? 200 : 503 },
+  );
 }

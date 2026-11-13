@@ -89,7 +89,7 @@ export async function exchangeGoogleAuthorizationCode(input: {
 }
 
 /** Verifies a native Android Google ID token before issuing Dream Force tokens. */
-export async function signInWithGoogleIdToken(idToken: string): Promise<SessionTokens> {
+export async function signInWithGoogleIdToken(idToken: string, timezone?: string): Promise<SessionTokens> {
   const environment = readServerEnvironment();
   const jwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
   let verified;
@@ -119,6 +119,7 @@ export async function signInWithGoogleIdToken(idToken: string): Promise<SessionT
     email,
     displayName: typeof verified.payload.name === 'string' ? verified.payload.name : null,
     avatarUrl: typeof verified.payload.picture === 'string' ? verified.payload.picture : null,
+    timezone,
   });
   return issueSession(user);
 }
@@ -128,12 +129,20 @@ async function findOrCreateGoogleUser(identity: {
   email: string;
   displayName: string | null;
   avatarUrl: string | null;
+  timezone?: string;
 }): Promise<AuthUser> {
   const sql = createDatabaseClient();
   const existing = (await sql`
     SELECT id, email, role, status FROM users WHERE google_subject = ${identity.subject} LIMIT 1
   `) as AuthUser[];
-  if (existing[0]) return assertActive(existing[0]);
+  if (existing[0]) {
+    // UTC is the schema fallback, so upgrade legacy profiles from the device's
+    // IANA zone on sign-in. A user-selected non-UTC profile zone remains intact.
+    if (identity.timezone) {
+      await sql`UPDATE user_profiles SET timezone=${identity.timezone} WHERE user_id=${existing[0].id}::uuid AND timezone='UTC'`;
+    }
+    return assertActive(existing[0]);
+  }
 
   const normalizedEmail = normalizeEmail(identity.email);
   const created = (await sql`
@@ -143,8 +152,8 @@ async function findOrCreateGoogleUser(identity: {
       ON CONFLICT (google_subject) DO NOTHING
       RETURNING id, email, role, status
     ), new_profile AS (
-      INSERT INTO user_profiles (user_id)
-      SELECT id FROM new_user
+      INSERT INTO user_profiles (user_id, timezone)
+      SELECT id, ${identity.timezone ?? 'UTC'} FROM new_user
     ), new_settings AS (
       INSERT INTO user_settings (user_id)
       SELECT id FROM new_user

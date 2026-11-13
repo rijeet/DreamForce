@@ -10,9 +10,13 @@ abstract final class DeviceSettings {
   static Future<bool> hasUsageAccess() async =>
       await _channel.invokeMethod<bool>('hasUsageAccess') ?? false;
 
-  static Future<ScreenTimeSummary> getTodayScreenTime() async {
+  static Future<String> getDeviceTimezone() async =>
+      await _channel.invokeMethod<String>('getDeviceTimezone') ?? 'UTC';
+
+  static Future<ScreenTimeSummary> getScreenTime(String period) async {
     final result = await _channel.invokeMapMethod<String, dynamic>(
-      'getTodayScreenTime',
+      'getScreenTime',
+      {'period': period},
     );
     final data = result ?? const <String, dynamic>{};
     final apps = (data['apps'] as List<dynamic>? ?? const [])

@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+import 'package:dream_force/core/platform/device_settings.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -41,16 +44,23 @@ class _AuthGateState extends State<AuthGate> {
         final account = await GoogleSignIn.instance
             .attemptLightweightAuthentication();
         if (account != null && await const DreamForceAuthApi().hasSession()) {
+          if (kDebugMode) await const DreamForceAuthApi().checkReadiness();
           _user = SignedInUser(
             account.email,
             account.displayName,
             account.photoUrl,
           );
+          try {
+            await _syncLegacyTimezone();
+          } catch (_) {
+            // Restoring an existing session should remain usable offline.
+          }
         }
       }
     } catch (error) {
-      _error =
-          'Could not restore sign-in. Confirm GOOGLE_SERVER_CLIENT_ID, Android package/SHA-1 setup, and the network, then retry. (${_safeError(error)})';
+      _error = error is AuthApiException
+          ? error.message
+          : 'Could not restore sign-in. Confirm GOOGLE_SERVER_CLIENT_ID, Android package/SHA-1 setup, and the network, then retry. (${_safeError(error)})';
     }
     if (mounted) {
       setState(() => _loading = false);
@@ -74,7 +84,10 @@ class _AuthGateState extends State<AuthGate> {
           'Google sign-in returned no ID token. Set the app’s GOOGLE_SERVER_CLIENT_ID to the Web application OAuth client ID. (GOOGLE_ID_TOKEN_MISSING)',
         );
       }
-      await const DreamForceAuthApi().exchangeGoogleIdToken(idToken);
+      await const DreamForceAuthApi().exchangeGoogleIdToken(
+        idToken,
+        timezone: await DeviceSettings.getDeviceTimezone(),
+      );
       if (mounted) {
         setState(
           () => _user = SignedInUser(
@@ -119,6 +132,22 @@ class _AuthGateState extends State<AuthGate> {
         _user = null;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _syncLegacyTimezone() async {
+    final api = const DreamForceAuthApi();
+    final profile = jsonDecode(
+      (await api.request('GET', '/v1/me')).body,
+    ) as Map<String, dynamic>;
+    if (profile['timezone'] == 'UTC') {
+      await api.request(
+        'PATCH',
+        '/v1/me',
+        body: {
+          'profile': {'timezone': await DeviceSettings.getDeviceTimezone()},
+        },
+      );
     }
   }
 

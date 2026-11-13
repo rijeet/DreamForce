@@ -64,6 +64,44 @@ export async function updateSettings(userId: string, input: SettingsInput) {
   return getProfile(userId);
 }
 
+export async function getActivityInsights(userId: string, period: 'day' | 'week' | 'month' | 'year') {
+  const profiles = await sql()`SELECT timezone FROM user_profiles WHERE user_id=${userId}::uuid`;
+  const timezone = String(profiles[0]?.timezone ?? 'UTC');
+  // The selected period is evaluated in the user's IANA timezone, then converted
+  // to instants by PostgreSQL. The DB/server timezone therefore cannot shift days.
+  const rows = await sql()`
+    WITH bounds AS (
+      SELECT ${timezone}::text AS tz,
+        date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone}) AS local_start,
+        date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone}) +
+          CASE ${period} WHEN 'day' THEN interval '1 day' WHEN 'week' THEN interval '1 week' WHEN 'month' THEN interval '1 month' ELSE interval '1 year' END AS local_end
+    ), bucketed AS (
+      SELECT date_trunc(CASE ${period} WHEN 'year' THEN 'month' ELSE 'day' END, f.ended_at AT TIME ZONE b.tz)::date AS local_date,
+        COALESCE(sum(f.actual_focus_seconds), 0)::int AS focus_seconds,
+        count(*)::int AS completed_sessions
+      FROM focus_sessions f CROSS JOIN bounds b
+      WHERE f.user_id=${userId}::uuid AND f.status='completed'
+        AND f.ended_at >= (b.local_start AT TIME ZONE b.tz)
+        AND f.ended_at < (b.local_end AT TIME ZONE b.tz)
+      GROUP BY local_date
+    ), date_buckets AS (
+      SELECT generate_series(
+        local_start,
+        local_end - CASE ${period} WHEN 'year' THEN interval '1 month' ELSE interval '1 day' END,
+        CASE ${period} WHEN 'year' THEN interval '1 month' ELSE interval '1 day' END
+      )::date AS local_date
+      FROM bounds
+    )
+    SELECT d.local_date::text AS date,
+      COALESCE(b.focus_seconds, 0)::int AS "focusSeconds",
+      COALESCE(b.completed_sessions, 0)::int AS "completedSessions"
+    FROM date_buckets d LEFT JOIN bucketed b USING (local_date) ORDER BY d.local_date
+  `;
+  const totalSeconds = rows.reduce((total, row) => total + Number(row.focusSeconds), 0);
+  const totalSessions = rows.reduce((total, row) => total + Number(row.completedSessions), 0);
+  return { period, timezone, totalFocusSeconds: totalSeconds, completedSessions: totalSessions, days: rows };
+}
+
 export async function listActivities(userId: string) {
   return sql()`SELECT id, name, icon_key AS "iconKey", category, planned_minutes AS "plannedMinutes", is_builtin AS "isBuiltin", version, updated_at AS "updatedAt" FROM activity_templates WHERE archived_at IS NULL AND (owner_user_id=${userId}::uuid OR is_builtin=true) ORDER BY is_builtin DESC, updated_at DESC`;
 }
