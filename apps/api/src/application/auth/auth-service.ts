@@ -92,10 +92,21 @@ export async function exchangeGoogleAuthorizationCode(input: {
 export async function signInWithGoogleIdToken(idToken: string): Promise<SessionTokens> {
   const environment = readServerEnvironment();
   const jwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
-  const verified = await jwtVerify(idToken, jwks, {
-    issuer: environment.GOOGLE_ISSUER,
-    audience: environment.GOOGLE_CLIENT_ID,
-  });
+  let verified;
+  try {
+    verified = await jwtVerify(idToken, jwks, {
+      issuer: environment.GOOGLE_ISSUER,
+      audience: environment.GOOGLE_CLIENT_ID,
+    });
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+    if (code === 'ERR_JWT_EXPIRED') throw new AuthenticationError('GOOGLE_TOKEN_EXPIRED');
+    if (code === 'ERR_JWT_CLAIM_VALIDATION_FAILED') {
+      const claim = error && typeof error === 'object' && 'claim' in error ? String(error.claim) : '';
+      throw new AuthenticationError(claim === 'aud' ? 'GOOGLE_AUDIENCE_MISMATCH' : 'GOOGLE_ISSUER_MISMATCH');
+    }
+    throw new AuthenticationError('GOOGLE_TOKEN_INVALID');
+  }
   const subject = verified.payload.sub;
   const email = verified.payload.email;
   const emailVerified = verified.payload.email_verified === true;

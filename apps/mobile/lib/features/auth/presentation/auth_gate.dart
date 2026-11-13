@@ -47,9 +47,9 @@ class _AuthGateState extends State<AuthGate> {
           );
         }
       }
-    } catch (_) {
+    } catch (error) {
       _error =
-          'Google sign-in needs a valid Android SHA-1 and server client ID.';
+          'Could not restore sign-in. Confirm GOOGLE_SERVER_CLIENT_ID, Android package/SHA-1 setup, and the network, then retry. (${_safeError(error)})';
     }
     if (mounted) {
       setState(() => _loading = false);
@@ -69,7 +69,9 @@ class _AuthGateState extends State<AuthGate> {
       final account = await GoogleSignIn.instance.authenticate();
       final idToken = account.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {
-        throw const AuthApiException('Google did not return an ID token.');
+        throw const AuthApiException(
+          'Google sign-in returned no ID token. Set the app’s GOOGLE_SERVER_CLIENT_ID to the Web application OAuth client ID. (GOOGLE_ID_TOKEN_MISSING)',
+        );
       }
       await const DreamForceAuthApi().exchangeGoogleIdToken(idToken);
       if (mounted) {
@@ -83,10 +85,11 @@ class _AuthGateState extends State<AuthGate> {
       }
     } on AuthApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
         setState(
-          () => _error = 'Google sign-in could not finish. Check the package name, SHA-1, and client ID.',
+          () => _error =
+              'Google sign-in could not finish. Check the Android package name and SHA-1 registration, Web client ID, and network. (${_safeError(error)})',
         );
       }
     } finally {
@@ -94,6 +97,11 @@ class _AuthGateState extends State<AuthGate> {
         setState(() => _signingIn = false);
       }
     }
+  }
+
+  String _safeError(Object error) {
+    final message = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+    return message.length > 180 ? '${message.substring(0, 180)}…' : message;
   }
 
   @override
