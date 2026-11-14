@@ -21,9 +21,6 @@ export type SessionTokens = {
   expiresIn: number;
 };
 
-const accessTokenLifetimeSeconds = 15 * 60;
-const refreshTokenLifetimeDays = 30;
-
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -37,21 +34,23 @@ function secretKey() {
 }
 
 async function accessTokenFor(user: AuthUser, sessionId: string) {
+  const lifetimeSeconds = readServerEnvironment().JWT_ACCESS_TOKEN_TTL_SECONDS;
   return new SignJWT({ role: user.role, sid: sessionId })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(user.id)
     .setIssuer('dream-force-api')
     .setAudience('dream-force-mobile')
     .setIssuedAt()
-    .setExpirationTime(`${accessTokenLifetimeSeconds}s`)
+    .setExpirationTime(`${lifetimeSeconds}s`)
     .sign(secretKey());
 }
 
 async function issueSession(user: AuthUser): Promise<SessionTokens> {
   const sql = createDatabaseClient();
+  const environment = readServerEnvironment();
   const sessionId = randomUUID();
   const refreshToken = randomBytes(48).toString('base64url');
-  const expiresAt = new Date(Date.now() + refreshTokenLifetimeDays * 86400 * 1000);
+  const expiresAt = new Date(Date.now() + environment.JWT_REFRESH_TOKEN_TTL_DAYS * 86400 * 1000);
 
   await sql`
     INSERT INTO auth_sessions (id, user_id, refresh_token_hash, expires_at)
@@ -61,7 +60,7 @@ async function issueSession(user: AuthUser): Promise<SessionTokens> {
   return {
     accessToken: await accessTokenFor(user, sessionId),
     refreshToken,
-    expiresIn: accessTokenLifetimeSeconds,
+    expiresIn: environment.JWT_ACCESS_TOKEN_TTL_SECONDS,
   };
 }
 
@@ -213,6 +212,7 @@ export async function signInAdmin(email: string, password: string): Promise<Sess
 
 export async function rotateRefreshToken(refreshToken: string): Promise<SessionTokens> {
   const sql = createDatabaseClient();
+  const environment = readServerEnvironment();
   const rows = (await sql`
     SELECT sessions.id AS session_id, users.id, users.email, users.role, users.status
     FROM auth_sessions AS sessions
@@ -225,7 +225,7 @@ export async function rotateRefreshToken(refreshToken: string): Promise<SessionT
   if (!current) throw new AuthenticationError('REFRESH_TOKEN_INVALID');
   const replacementId = randomUUID();
   const nextRefreshToken = randomBytes(48).toString('base64url');
-  const expiresAt = new Date(Date.now() + refreshTokenLifetimeDays * 86400 * 1000);
+  const expiresAt = new Date(Date.now() + environment.JWT_REFRESH_TOKEN_TTL_DAYS * 86400 * 1000);
   const rotated = (await sql`
     WITH revoked AS (
       UPDATE auth_sessions
@@ -248,7 +248,7 @@ export async function rotateRefreshToken(refreshToken: string): Promise<SessionT
   `) as { id: string }[];
   if (!rotated[0]) throw new AuthenticationError('REFRESH_TOKEN_REPLAYED');
   const user = assertActive(current);
-  return { accessToken: await accessTokenFor(user, replacementId), refreshToken: nextRefreshToken, expiresIn: accessTokenLifetimeSeconds };
+  return { accessToken: await accessTokenFor(user, replacementId), refreshToken: nextRefreshToken, expiresIn: environment.JWT_ACCESS_TOKEN_TTL_SECONDS };
 }
 
 export async function revokeRefreshToken(refreshToken: string) {

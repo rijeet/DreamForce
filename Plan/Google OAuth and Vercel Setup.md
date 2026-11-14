@@ -81,6 +81,8 @@ Fill the new, untracked file:
 | `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` | Upstash QStash dashboard | Job publishing/signature verification |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_ISSUER` | Google Cloud, step 3 | Web server client ID and Google issuer |
 | `JWT_ACCESS_TOKEN_SECRET` | Generate locally | Random 32+ character secret |
+| `JWT_ACCESS_TOKEN_TTL_SECONDS` | Choose locally | Optional; access-token lifetime in seconds (300–3600 / 5–60 minutes; default 900 / 15 minutes) |
+| `JWT_REFRESH_TOKEN_TTL_DAYS` | Choose locally | Optional; sliding refresh-token inactivity window in days (30–365; default 30; extended on every successful rotation) |
 | `ADMIN_SESSION_SECRET` | Generate locally | Independent random 32+ character secret |
 
 Generate the two application secrets in PowerShell:
