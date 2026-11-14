@@ -22,7 +22,14 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
   final _nameController = TextEditingController();
   var _seconds = 3600;
   var _unit = 'Minutes';
-  var _icon = Icons.bolt_outlined;
+  var _iconKey = 'focus';
+  static const _activityIcons = <String, IconData>{
+    'focus': Icons.bolt_outlined,
+    'study': Icons.menu_book_outlined,
+    'coding': Icons.code,
+    'exercise': Icons.directions_run_outlined,
+    'reading': Icons.auto_stories_outlined,
+  };
   Timer? _repeatTimer;
 
   @override
@@ -66,7 +73,8 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
       widget.onSave(
         ActivityDraft.seconds(
           name: _nameController.text.trim(),
-          icon: _icon,
+          icon: _activityIcons[_iconKey]!,
+          iconKey: _iconKey,
           plannedSeconds: _seconds,
         ),
       );
@@ -159,22 +167,15 @@ class _CreateActivityScreenState extends State<CreateActivityScreen> {
               const SizedBox(height: 8),
               Wrap(
                 spacing: 10,
-                children:
-                    [
-                          Icons.bolt_outlined,
-                          Icons.menu_book_outlined,
-                          Icons.code,
-                          Icons.directions_run_outlined,
-                          Icons.auto_stories_outlined,
-                        ]
-                        .map(
-                          (icon) => ChoiceChip(
-                            label: Icon(icon),
-                            selected: _icon == icon,
-                            onSelected: (_) => setState(() => _icon = icon),
-                          ),
-                        )
-                        .toList(),
+                children: _activityIcons.entries
+                    .map(
+                      (entry) => ChoiceChip(
+                        label: Icon(entry.value),
+                        selected: _iconKey == entry.key,
+                        onSelected: (_) => setState(() => _iconKey = entry.key),
+                      ),
+                    )
+                    .toList(),
               ),
             ],
           ),

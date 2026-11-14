@@ -8,11 +8,13 @@ class TodayScreen extends StatelessWidget {
     required this.onChooseActivity,
     required this.session,
     required this.onDeleteSession,
+    required this.onReviewToday,
     super.key,
   });
   final VoidCallback onChooseActivity;
   final FocusSession? session;
   final VoidCallback onDeleteSession;
+  final VoidCallback onReviewToday;
 
   @override
   Widget build(BuildContext context) => session == null
@@ -92,14 +94,21 @@ class TodayScreen extends StatelessWidget {
         const SizedBox(height: 24),
         Card(
           color: Theme.of(context).colorScheme.secondaryContainer,
-          child: const Padding(
-            padding: EdgeInsets.all(18),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Close your day with a reflection'),
-                SizedBox(height: 4),
-                Text('You can review today even if no activity is complete.'),
+                const Text('Close your day with a reflection'),
+                const SizedBox(height: 4),
+                const Text(
+                  'You can review today even if no activity is complete.',
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: onReviewToday,
+                  child: const Text('Review today'),
+                ),
               ],
             ),
           ),

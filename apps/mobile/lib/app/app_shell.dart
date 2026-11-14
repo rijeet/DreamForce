@@ -6,6 +6,7 @@ import 'package:dream_force/features/auth/presentation/auth_gate.dart';
 import 'package:dream_force/features/activities/presentation/choose_activity_screen.dart';
 import 'package:dream_force/features/activities/presentation/create_activity_screen.dart';
 import 'package:dream_force/features/insights/presentation/insights_screen.dart';
+import 'package:dream_force/features/reviews/presentation/daily_review_screen.dart';
 import 'package:dream_force/features/plan/presentation/plan_screen.dart';
 import 'package:dream_force/features/profile/presentation/profile_screen.dart';
 import 'package:dream_force/features/today/presentation/today_screen.dart';
@@ -21,6 +22,7 @@ enum _ShellPage {
   profile,
   chooseActivity,
   createActivity,
+  dailyReview,
 }
 
 class AppShell extends StatefulWidget {
@@ -40,24 +42,39 @@ class _AppShellState extends State<AppShell> {
       name: 'Study',
       icon: Icons.menu_book_outlined,
       plannedMinutes: 45,
+      iconKey: 'study',
+      category: 'Study',
     ),
-    const ActivityDraft(name: 'Coding', icon: Icons.code, plannedMinutes: 60),
+    const ActivityDraft(
+      name: 'Coding',
+      icon: Icons.code,
+      plannedMinutes: 60,
+      iconKey: 'coding',
+      category: 'Coding',
+    ),
     const ActivityDraft(
       name: 'Exercise',
       icon: Icons.directions_run_outlined,
       plannedMinutes: 30,
+      iconKey: 'exercise',
+      category: 'Exercise',
     ),
     const ActivityDraft(
       name: 'Reading',
       icon: Icons.auto_stories_outlined,
       plannedMinutes: 30,
+      iconKey: 'reading',
+      category: 'Reading',
     ),
   ];
+  String _reviewDate = '';
+  _ShellPage _reviewReturnPage = _ShellPage.today;
 
   @override
   void initState() {
     super.initState();
     unawaited(_restoreCurrentSession());
+    unawaited(_loadActivities());
   }
 
   Future<void> _restoreCurrentSession() async {
@@ -82,6 +99,7 @@ class _AppShellState extends State<AppShell> {
           ActivityDraft(
             name: value['name'] as String? ?? 'Focus session',
             icon: Icons.timer_outlined,
+            iconKey: value['iconKey'] as String? ?? 'focus',
             plannedMinutes: plannedMinutes,
           ),
           remoteId: value['id'] as String?,
@@ -105,6 +123,7 @@ class _AppShellState extends State<AppShell> {
     _ShellPage.chooseActivity ||
     _ShellPage.createActivity => 0,
     _ShellPage.plan => 1,
+    _ShellPage.dailyReview => _reviewReturnPage == _ShellPage.plan ? 1 : 0,
     _ShellPage.insights => 2,
     _ShellPage.profile => 3,
   };
@@ -124,7 +143,8 @@ class _AppShellState extends State<AppShell> {
       '/v1/activity-templates',
       body: {
         'name': activity.name,
-        'iconKey': 'focus',
+        'iconKey': activity.iconKey,
+        'category': activity.category,
         'plannedMinutes': activity.plannedMinutes.clamp(1, 480),
       },
     );
@@ -134,6 +154,8 @@ class _AppShellState extends State<AppShell> {
         ActivityDraft.seconds(
           name: activity.name,
           icon: activity.icon,
+          iconKey: activity.iconKey,
+          category: activity.category,
           plannedSeconds: activity.plannedSeconds,
           templateId: body['id'] as String?,
         ),
@@ -142,7 +164,69 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
-  Future<void> _startSession(ActivityDraft activity) async {
+  Future<void> _loadActivities() async {
+    try {
+      var response = await const DreamForceAuthApi().request(
+        'GET',
+        '/v1/activity-templates',
+      );
+      var rows = jsonDecode(response.body) as List<dynamic>;
+      if (rows.isEmpty) {
+        for (final activity in _activities) {
+          await const DreamForceAuthApi().request(
+            'POST',
+            '/v1/activity-templates',
+            body: {
+              'name': activity.name,
+              'iconKey': activity.iconKey,
+              'category': activity.category,
+              'plannedMinutes': activity.plannedMinutes.clamp(1, 480),
+            },
+          );
+        }
+        response = await const DreamForceAuthApi().request(
+          'GET',
+          '/v1/activity-templates',
+        );
+        rows = jsonDecode(response.body) as List<dynamic>;
+      }
+      final loaded = rows.whereType<Map<String, dynamic>>().map((item) {
+        final iconKey = item['iconKey'] as String? ?? 'focus';
+        return ActivityDraft.seconds(
+          name: item['name'] as String? ?? 'Activity',
+          icon: _activityIcon(iconKey),
+          iconKey: iconKey,
+          category: item['category'] as String?,
+          templateId: item['id'] as String?,
+          plannedSeconds:
+              ((item['plannedMinutes'] as num?)?.toInt() ?? 25) * 60,
+        );
+      }).toList();
+      if (mounted && loaded.isNotEmpty) {
+        setState(() {
+          _activities
+            ..clear()
+            ..addAll(loaded);
+        });
+      }
+    } catch (_) {
+      // Keep the built-in local choices available if template sync is offline.
+    }
+  }
+
+  IconData _activityIcon(String key) => switch (key) {
+    'study' => Icons.menu_book_outlined,
+    'coding' => Icons.code,
+    'exercise' => Icons.directions_run_outlined,
+    'reading' => Icons.auto_stories_outlined,
+    'focus' => Icons.bolt_outlined,
+    _ => Icons.task_alt_outlined,
+  };
+
+  Future<void> _startSession(
+    ActivityDraft activity, {
+    String? planOccurrenceId,
+  }) async {
     final response = await const DreamForceAuthApi().request(
       'POST',
       '/v1/sessions',
@@ -150,7 +234,9 @@ class _AppShellState extends State<AppShell> {
       body: {
         'templateId': activity.templateId,
         'name': activity.name,
-        'iconKey': 'focus',
+        'planOccurrenceId': planOccurrenceId,
+        'iconKey': activity.iconKey,
+        'category': activity.category,
         'plannedMinutes': activity.plannedMinutes.clamp(1, 480),
         'timezone': 'Asia/Dhaka',
       },
@@ -170,6 +256,12 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  void _openReview(String localDate, {_ShellPage? returnPage}) => setState(() {
+    _reviewDate = localDate;
+    _reviewReturnPage = returnPage ?? _page;
+    _page = _ShellPage.dailyReview;
+  });
+
   void _deleteSession() => setState(() {
     if (_session?.status != SessionStatus.completed) _session?.cancel();
     _session?.dispose();
@@ -187,8 +279,14 @@ class _AppShellState extends State<AppShell> {
       onChooseActivity: () => setState(() => _page = _ShellPage.chooseActivity),
       session: _session,
       onDeleteSession: _deleteSession,
+      onReviewToday: () =>
+          _openReview(_todayLocalDate(), returnPage: _ShellPage.today),
     ),
-    _ShellPage.plan => const PlanScreen(),
+    _ShellPage.plan => PlanScreen(
+      onReview: (date) => _openReview(date, returnPage: _ShellPage.plan),
+      onStartActivity: (activity, occurrenceId) =>
+          _startSession(activity, planOccurrenceId: occurrenceId),
+    ),
     _ShellPage.insights => const InsightsScreen(),
     _ShellPage.profile => ProfileScreen(
       user: widget.user,
@@ -198,13 +296,22 @@ class _AppShellState extends State<AppShell> {
       activities: _activities,
       onBack: () => setState(() => _page = _ShellPage.today),
       onCreateActivity: () => setState(() => _page = _ShellPage.createActivity),
-      onStart: _startSession,
+      onStart: (activity) => _startSession(activity),
     ),
     _ShellPage.createActivity => CreateActivityScreen(
       onBack: () => setState(() => _page = _ShellPage.chooseActivity),
       onSave: _saveActivity,
     ),
+    _ShellPage.dailyReview => DailyReviewScreen(
+      localDate: _reviewDate,
+      onDone: () => setState(() => _page = _reviewReturnPage),
+    ),
   };
+
+  String _todayLocalDate() {
+    final now = DateTime.now();
+    return '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
