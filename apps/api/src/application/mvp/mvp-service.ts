@@ -10,6 +10,7 @@ import type {
   sessionEventSchema,
   updateProfileSchema,
   updateSettingsSchema,
+  updateWeeklyPlanSchema,
   weeklyPlanSchema,
 } from '@dream-force/api-contract';
 
@@ -23,6 +24,7 @@ type ActivityPatch = z.infer<typeof patchActivityTemplateSchema>;
 type SessionInput = z.infer<typeof createSessionSchema>;
 type SessionEventInput = z.infer<typeof sessionEventSchema>;
 type PlanInput = z.infer<typeof weeklyPlanSchema>;
+type UpdatePlanInput = z.infer<typeof updateWeeklyPlanSchema>;
 type ReviewInput = z.infer<typeof dailyReviewSchema>;
 const sql = createDatabaseClient;
 
@@ -122,14 +124,19 @@ export async function uploadScreenTimeUsage(userId: string, input: { queriedAt: 
   return { uploadedRows, queriedAt: input.queriedAt };
 }
 
-export async function getScreenTimeInsights(userId: string, period: 'day' | 'week' | 'month' | 'year', timezone: string) {
+export async function getScreenTimeInsights(userId: string, period: 'day' | 'week' | 'month' | 'year', timezone: string, year?: number) {
   const settings = await sql()`SELECT screen_time_sync_enabled AS enabled FROM user_settings WHERE user_id=${userId}::uuid`;
   if (settings[0]?.enabled !== true) throw new HttpProblem(403, 'SCREEN_TIME_SYNC_CONSENT_REQUIRED');
   const bounds = await sql()`
-    WITH local_bounds AS (
-      SELECT date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone})::date AS start_date,
-        (date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone}) +
-          CASE ${period} WHEN 'day' THEN interval '1 day' WHEN 'week' THEN interval '1 week' WHEN 'month' THEN interval '1 month' ELSE interval '1 year' END)::date AS end_date
+    WITH start_bound AS (
+      SELECT CASE WHEN ${period}='year'
+        THEN make_date(COALESCE(${year ?? null}::int, EXTRACT(YEAR FROM now() AT TIME ZONE ${timezone})::int), 1, 1)
+        ELSE date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone})::date
+      END AS start_date
+    ), local_bounds AS (
+      SELECT start_date,
+        (start_date + CASE ${period} WHEN 'day' THEN interval '1 day' WHEN 'week' THEN interval '1 week' WHEN 'month' THEN interval '1 month' ELSE interval '1 year' END)::date AS end_date
+      FROM start_bound
     )
     SELECT start_date::text AS "startDate", end_date::text AS "endDate" FROM local_bounds
   `;
@@ -141,30 +148,45 @@ export async function getScreenTimeInsights(userId: string, period: 'day' | 'wee
     WHERE user_id=${userId}::uuid AND timezone_id=${timezone} AND local_date >= ${startDate}::date AND local_date < ${endDate}::date
     GROUP BY package_name ORDER BY sum(usage_seconds) DESC
   `;
+  const days = await sql()`
+    SELECT local_date::text AS date, sum(usage_seconds)::int AS "usageSeconds"
+    FROM user_app_usage_daily
+    WHERE user_id=${userId}::uuid AND timezone_id=${timezone} AND local_date >= ${startDate}::date AND local_date < ${endDate}::date
+    GROUP BY local_date ORDER BY local_date
+  `;
   return {
-    period, timezone, startDate, endDate,
+    period, timezone, year: period === 'year' ? Number(startDate.slice(0, 4)) : null, startDate, endDate,
     totalUsageSeconds: apps.reduce((sum, app) => sum + Number(app.usageSeconds), 0),
+    days: days.map((day) => ({ ...day, usageSeconds: Number(day.usageSeconds) })),
     updatedAt: apps.reduce<string | null>((latest, app) => {
       const value = app.queriedAt instanceof Date ? app.queriedAt.toISOString() : String(app.queriedAt);
       return latest === null || value > latest ? value : latest;
     }, null),
-    apps: apps.map((app) => ({ ...app, usageSeconds: Number(app.usageSeconds) })),
+    apps: apps.map((app) => ({
+      ...app,
+      usageSeconds: Number(app.usageSeconds),
+      queriedAt: app.queriedAt instanceof Date ? app.queriedAt.toISOString() : String(app.queriedAt),
+    })),
   };
 }
 
-export async function getActivityInsights(userId: string, period: 'day' | 'week' | 'month' | 'year') {
+export async function getActivityInsights(userId: string, period: 'day' | 'week' | 'month' | 'year', year?: number) {
   const profiles = await sql()`SELECT timezone FROM user_profiles WHERE user_id=${userId}::uuid`;
   const timezone = String(profiles[0]?.timezone ?? 'UTC');
   // The selected period is evaluated in the user's IANA timezone, then converted
   // to instants by PostgreSQL. The DB/server timezone therefore cannot shift days.
   const rows = await sql()`
-    WITH bounds AS (
+    WITH start_bound AS (
       SELECT ${timezone}::text AS tz,
-        date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone}) AS local_start,
-        date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone}) +
-          CASE ${period} WHEN 'day' THEN interval '1 day' WHEN 'week' THEN interval '1 week' WHEN 'month' THEN interval '1 month' ELSE interval '1 year' END AS local_end
+        CASE WHEN ${period}='year'
+          THEN make_date(COALESCE(${year ?? null}::int, EXTRACT(YEAR FROM now() AT TIME ZONE ${timezone})::int), 1, 1)::timestamp
+          ELSE date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone}) END AS local_start
+    ), bounds AS (
+      SELECT tz, local_start,
+        local_start + CASE ${period} WHEN 'day' THEN interval '1 day' WHEN 'week' THEN interval '1 week' WHEN 'month' THEN interval '1 month' ELSE interval '1 year' END AS local_end
+      FROM start_bound
     ), bucketed AS (
-      SELECT date_trunc(CASE ${period} WHEN 'year' THEN 'month' ELSE 'day' END, f.ended_at AT TIME ZONE b.tz)::date AS local_date,
+      SELECT date_trunc('day', f.ended_at AT TIME ZONE b.tz)::date AS local_date,
         COALESCE(sum(f.actual_focus_seconds), 0)::int AS focus_seconds,
         count(*)::int AS completed_sessions
       FROM focus_sessions f CROSS JOIN bounds b
@@ -175,8 +197,8 @@ export async function getActivityInsights(userId: string, period: 'day' | 'week'
     ), date_buckets AS (
       SELECT generate_series(
         local_start,
-        local_end - CASE ${period} WHEN 'year' THEN interval '1 month' ELSE interval '1 day' END,
-        CASE ${period} WHEN 'year' THEN interval '1 month' ELSE interval '1 day' END
+        local_end - interval '1 day',
+        interval '1 day'
       )::date AS local_date
       FROM bounds
     )
@@ -185,9 +207,28 @@ export async function getActivityInsights(userId: string, period: 'day' | 'week'
       COALESCE(b.completed_sessions, 0)::int AS "completedSessions"
     FROM date_buckets d LEFT JOIN bucketed b USING (local_date) ORDER BY d.local_date
   `;
+  const categories = await sql()`
+    WITH start_bound AS (
+      SELECT ${timezone}::text AS tz,
+        CASE WHEN ${period}='year'
+          THEN make_date(COALESCE(${year ?? null}::int, EXTRACT(YEAR FROM now() AT TIME ZONE ${timezone})::int), 1, 1)::timestamp
+          ELSE date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone}) END AS local_start
+    ), bounds AS (
+      SELECT tz, local_start,
+        local_start + CASE ${period} WHEN 'day' THEN interval '1 day' WHEN 'week' THEN interval '1 week' WHEN 'month' THEN interval '1 month' ELSE interval '1 year' END AS local_end
+      FROM start_bound
+    )
+    SELECT COALESCE(NULLIF(trim(f.category_snapshot), ''), NULLIF(trim(f.name_snapshot), ''), 'Uncategorized') AS name,
+      sum(f.actual_focus_seconds)::int AS "focusSeconds", count(*)::int AS "completedSessions"
+    FROM focus_sessions f CROSS JOIN bounds b
+    WHERE f.user_id=${userId}::uuid AND f.status='completed'
+      AND f.ended_at >= (b.local_start AT TIME ZONE b.tz)
+      AND f.ended_at < (b.local_end AT TIME ZONE b.tz)
+    GROUP BY name ORDER BY sum(f.actual_focus_seconds) DESC
+  `;
   const totalSeconds = rows.reduce((total, row) => total + Number(row.focusSeconds), 0);
   const totalSessions = rows.reduce((total, row) => total + Number(row.completedSessions), 0);
-  return { period, timezone, totalFocusSeconds: totalSeconds, completedSessions: totalSessions, days: rows };
+  return { period, timezone, year: period === 'year' ? Number(rows[0]?.date?.slice(0, 4) ?? year ?? new Date().getFullYear()) : null, totalFocusSeconds: totalSeconds, completedSessions: totalSessions, days: rows, categories: categories.map((row) => ({ ...row, focusSeconds: Number(row.focusSeconds), completedSessions: Number(row.completedSessions) })) };
 }
 
 export async function listActivities(userId: string) {
@@ -222,6 +263,22 @@ function schedule(totalMinutes: number) {
 }
 
 export async function createFocusSession(userId: string, input: SessionInput) {
+  if (input.planOccurrenceId) {
+    const occurrence = await sql()`
+      SELECT o.template_id FROM plan_occurrences o
+      WHERE o.id=${input.planOccurrenceId}::uuid AND o.user_id=${userId}::uuid
+        AND o.state IN ('scheduled','unstarted')
+        AND NOT EXISTS (
+          SELECT 1 FROM focus_sessions s
+          WHERE s.plan_occurrence_id=o.id AND s.status <> 'cancelled'
+        )
+      LIMIT 1
+    `;
+    if (!occurrence[0]) conflict('PLAN_OCCURRENCE_UNAVAILABLE');
+    if (occurrence[0].template_id !== (input.templateId ?? null)) {
+      conflict('PLAN_OCCURRENCE_TEMPLATE_MISMATCH');
+    }
+  }
   const phases = schedule(input.plannedMinutes);
   const now = new Date();
   const target = new Date(now.getTime() + phases[0].seconds * 1000);
@@ -312,10 +369,84 @@ export async function listPlans(userId: string) {
 }
 
 export async function createPlan(userId: string, input: PlanInput) {
-  const rows = await sql()`INSERT INTO weekly_plans (user_id, name, timezone) VALUES (${userId}::uuid, ${input.name}, ${input.timezone}) RETURNING id, name, timezone, is_active AS "isActive", version`;
-  const plan = rows[0] as Record<string, unknown>;
-  await Promise.all(input.entries.map((entry) => sql()`INSERT INTO weekly_plan_entries (plan_id, template_id, weekday, position, local_start_time, planned_minutes_override) VALUES (${plan.id as string}::uuid, ${entry.templateId}::uuid, ${entry.weekday}, ${entry.position}, ${entry.localStartTime ?? null}, ${entry.plannedMinutesOverride ?? null})`));
-  return getPlan(userId, plan.id as string);
+  const entryJson = JSON.stringify(input.entries);
+  const rows = await sql()`
+    WITH supplied AS (
+      SELECT * FROM jsonb_to_recordset(${entryJson}::jsonb) AS e(
+        "templateId" uuid, weekday smallint, position smallint,
+        "localStartTime" time, "plannedMinutesOverride" smallint
+      )
+    ), allowed AS (
+      SELECT supplied.* FROM supplied
+      JOIN activity_templates a ON a.id=supplied."templateId"
+      WHERE a.archived_at IS NULL AND (a.owner_user_id=${userId}::uuid OR a.is_builtin=true)
+    ), created AS (
+      INSERT INTO weekly_plans (user_id, name, timezone)
+      SELECT ${userId}::uuid, ${input.name}, ${input.timezone}
+      WHERE (SELECT count(*) FROM supplied)=(SELECT count(*) FROM allowed)
+      RETURNING id
+    ), inserted AS (
+      INSERT INTO weekly_plan_entries (plan_id, template_id, weekday, position, local_start_time, planned_minutes_override)
+      SELECT created.id, allowed."templateId", allowed.weekday, allowed.position,
+        allowed."localStartTime", allowed."plannedMinutesOverride"
+      FROM created CROSS JOIN allowed
+      RETURNING id
+    )
+    SELECT id FROM created
+  `;
+  if (!rows[0]) throw new HttpProblem(400, 'PLAN_ACTIVITY_NOT_AVAILABLE');
+  return getPlan(userId, rows[0].id as string);
+}
+
+export async function updatePlan(userId: string, id: string, input: UpdatePlanInput) {
+  const entryJson = JSON.stringify(input.entries);
+  const rows = await sql()`
+    WITH supplied AS (
+      SELECT * FROM jsonb_to_recordset(${entryJson}::jsonb) AS e(
+        "templateId" uuid, weekday smallint, position smallint,
+        "localStartTime" time, "plannedMinutesOverride" smallint
+      )
+    ), allowed AS (
+      SELECT supplied.* FROM supplied
+      JOIN activity_templates a ON a.id=supplied."templateId"
+      WHERE a.archived_at IS NULL AND (a.owner_user_id=${userId}::uuid OR a.is_builtin=true)
+    ), changed AS (
+      UPDATE weekly_plans SET name=${input.name}, timezone=${input.timezone}, version=version+1
+      WHERE id=${id}::uuid AND user_id=${userId}::uuid AND version=${input.version}
+        AND (SELECT count(*) FROM supplied)=(SELECT count(*) FROM allowed)
+      RETURNING id
+    ), purged_occurrences AS (
+      DELETE FROM plan_occurrences o USING changed c
+      WHERE o.plan_id=c.id AND o.state IN ('scheduled','unstarted')
+        AND o.local_date >= (now() AT TIME ZONE ${input.timezone})::date
+      RETURNING o.id
+    ), occurrence_barrier AS (
+      SELECT count(*) AS purged_count FROM purged_occurrences
+    ), deleted AS (
+      DELETE FROM weekly_plan_entries e USING changed c, occurrence_barrier WHERE e.plan_id=c.id RETURNING e.id
+    ), delete_barrier AS (
+      SELECT count(*) AS deleted_count FROM deleted
+    ), inserted AS (
+      INSERT INTO weekly_plan_entries (plan_id, template_id, weekday, position, local_start_time, planned_minutes_override)
+      SELECT changed.id, allowed."templateId", allowed.weekday, allowed.position,
+        allowed."localStartTime", allowed."plannedMinutesOverride"
+      FROM changed CROSS JOIN delete_barrier CROSS JOIN allowed
+      RETURNING id
+    )
+    SELECT id FROM changed
+  `;
+  if (!rows[0]) {
+    const existing = await sql()`SELECT version FROM weekly_plans WHERE id=${id}::uuid AND user_id=${userId}::uuid`;
+    if (!existing[0]) notFound('PLAN_NOT_FOUND');
+    const allowed = await sql()`
+      WITH supplied AS (SELECT * FROM jsonb_to_recordset(${entryJson}::jsonb) AS e("templateId" uuid))
+      SELECT count(*)::int AS count FROM supplied JOIN activity_templates a ON a.id=supplied."templateId"
+      WHERE a.archived_at IS NULL AND (a.owner_user_id=${userId}::uuid OR a.is_builtin=true)
+    `;
+    if (Number(allowed[0]?.count) !== input.entries.length) throw new HttpProblem(400, 'PLAN_ACTIVITY_NOT_AVAILABLE');
+    stale();
+  }
+  return getPlan(userId, id);
 }
 
 export async function getPlan(userId: string, id: string) {
@@ -325,9 +456,55 @@ export async function getPlan(userId: string, id: string) {
   return { ...plans[0], entries };
 }
 
+export async function listPlanOccurrences(userId: string, localDate: string) {
+  await sql()`
+    INSERT INTO plan_occurrences (
+      user_id, plan_id, plan_entry_id, template_id, local_date, timezone,
+      local_start_time, planned_minutes, name_snapshot, icon_key_snapshot
+    )
+    SELECT ${userId}::uuid, p.id, e.id, a.id, ${localDate}::date, p.timezone,
+      e.local_start_time, COALESCE(e.planned_minutes_override, a.planned_minutes), a.name, a.icon_key
+    FROM weekly_plans p
+    JOIN weekly_plan_entries e ON e.plan_id=p.id
+    JOIN activity_templates a ON a.id=e.template_id
+    WHERE p.user_id=${userId}::uuid AND p.is_active
+      AND e.weekday=EXTRACT(ISODOW FROM ${localDate}::date)::smallint
+      AND (a.owner_user_id=${userId}::uuid OR a.is_builtin=true)
+    ON CONFLICT (plan_entry_id, local_date) WHERE plan_entry_id IS NOT NULL DO NOTHING
+  `;
+  return sql()`
+    SELECT o.id, o.local_date AS "localDate", o.timezone, o.local_start_time AS "localStartTime",
+      o.planned_minutes AS "plannedMinutes", o.name_snapshot AS name,
+      o.icon_key_snapshot AS "iconKey", o.state,
+      CASE WHEN s.status='completed' THEN 'completed'
+           WHEN s.status IN ('running','paused') THEN 'started'
+           WHEN s.status='cancelled' THEN 'unstarted'
+           ELSE o.state END AS "displayState",
+      o.template_id AS "templateId"
+    FROM plan_occurrences o
+    LEFT JOIN LATERAL (
+      SELECT status FROM focus_sessions WHERE plan_occurrence_id=o.id AND user_id=${userId}::uuid
+      ORDER BY created_at DESC LIMIT 1
+    ) s ON true
+    WHERE o.user_id=${userId}::uuid AND o.local_date=${localDate}::date
+    ORDER BY o.local_start_time NULLS LAST, o.created_at
+  `;
+}
+
+export async function skipPlanOccurrence(userId: string, id: string) {
+  const rows = await sql()`UPDATE plan_occurrences SET state='skipped'
+    WHERE id=${id}::uuid AND user_id=${userId}::uuid AND state IN ('scheduled','unstarted')
+    RETURNING id`;
+  if (!rows[0]) notFound('PLAN_OCCURRENCE_NOT_FOUND_OR_STARTED');
+}
+
 export async function getDailyReview(userId: string, localDate: string) {
   const rows = await sql()`SELECT local_date AS "localDate", timezone, mood, summary, reflection, reason_tags AS "reasonTags", version, updated_at AS "updatedAt" FROM daily_reviews WHERE user_id=${userId}::uuid AND local_date=${localDate}::date`;
   return rows[0] ?? null;
+}
+
+export async function deleteDailyReview(userId: string, localDate: string) {
+  await sql()`DELETE FROM daily_reviews WHERE user_id=${userId}::uuid AND local_date=${localDate}::date`;
 }
 
 export async function upsertDailyReview(userId: string, localDate: string, input: ReviewInput) {

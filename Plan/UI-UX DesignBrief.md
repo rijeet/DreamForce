@@ -124,7 +124,7 @@ Use semantic tokens in implementation; individual screens must not introduce una
 - Donut chart uses stable colors for categories/apps across chart, list, and usage bar.
 - Heatmap compares Activity − Screen Time, not a 24-hour allocation.
 - Larger 9 px square cells with 2 px gap are horizontally touch-scrollable.
-- Include horizontal year pills, quarter-jump pills, weekday labels, month labels, diverging legend, selected-day card, and 2 × 2 KPI cards.
+- Include horizontally scrollable year pills (current year back to `INSIGHTS_HEATMAP_EARLIEST_YEAR`, default 2019), horizontally scrollable quarter pills, month labels, diverging legend, selected-day card, and 2 × 2 KPI cards. Select the current quarter on load and omit weekday labels beside the grid.
 - Heatmap includes text labels and legend; red/green never carry meaning alone.
 
 ## Screens
@@ -183,8 +183,8 @@ Use semantic tokens in implementation; individual screens must not introduce una
 ### Insights: Activity
 
 - **Layout, top to bottom:** Page title; Activity/Screen time segmented control; period picker; total summary; donut chart; heatmap with year/quarter controls; selected-day comparison; KPI grid; activity-category list.
-- **Key elements:** Activity reflects completed Dream Force focus time only.
-- **Interaction:** Changing period updates total/chart/list; heatmap remains yearly. Tapping a day updates selected-day details.
+- **Key elements:** Activity reflects completed Dream Force focus time only. The donut and category list show focus time grouped by activity category.
+- **Interaction:** Changing period updates total/chart/list; heatmap remains on the selected calendar year. Tapping a day updates selected-day details. Red heatmap values indicate more Android screen time; green values indicate more Dream Force activity; neutral indicates equal or no difference.
 
 ### Insights: Screen time (Android only)
 

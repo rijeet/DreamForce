@@ -985,6 +985,8 @@ The active session is not a fifth tab. When a session is running and the user le
 
 **Layout:** The third bottom-navigation destination is Insights, not History. It opens with Activity selected and provides an Android-only Screen time segment. The yearly comparison heatmap remains visible while Day, Week, Month, and Year update the active summary, donut chart, and breakdown. Do not ship the previous standalone History screen.
 
+**Data contract:** Activity insights return user-timezone daily focus-session buckets and completed focus seconds grouped by activity category for the selected period. Screen-time insights return app totals and user-timezone daily app-usage buckets for the same selected year. The heatmap uses the signed daily difference between completed Dream Force focus seconds and Android screen-time seconds: red means more screen time, green means more focused activity, and neutral means equal/zero. The donut and list use the active period and share stable category/app colors.
+
 **Actions:** Change Activity/Screen time source, change period, inspect a category/app breakdown, and open the current day’s detail when available. No global search over reflection text in MVP.
 
 **States:** No activity, Usage access not granted/revoked, loading, offline cached data, partial Android results, and unavailable app records.

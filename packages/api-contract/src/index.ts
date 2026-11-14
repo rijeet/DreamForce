@@ -121,6 +121,13 @@ export const weeklyPlanSchema = z.object({
   timezone: timezoneSchema,
   entries: z.array(weeklyPlanEntrySchema).max(70),
 });
+export const updateWeeklyPlanSchema = weeklyPlanSchema.extend({
+  version: z.number().int().positive(),
+});
+
+export const skipPlanOccurrenceSchema = z.object({
+  state: z.literal('skipped'),
+});
 
 export const dailyReviewSchema = z.object({
   timezone: timezoneSchema,
@@ -146,3 +153,48 @@ export const screenTimeUploadSchema = z.object({
   return new Set(keys).size === keys.length;
 }, { path: ['rows'], message: 'Each app may appear once per local date and timezone.' });
 export const screenTimePeriodSchema = z.enum(['day', 'week', 'month', 'year']);
+
+export const activityInsightDaySchema = z.object({
+  date: z.string().date(),
+  focusSeconds: z.number().int().nonnegative(),
+  completedSessions: z.number().int().nonnegative(),
+});
+
+export const activityInsightCategorySchema = z.object({
+  name: z.string().min(1),
+  focusSeconds: z.number().int().nonnegative(),
+  completedSessions: z.number().int().nonnegative(),
+});
+
+export const activityInsightsResponseSchema = z.object({
+  period: screenTimePeriodSchema,
+  timezone: timezoneSchema,
+  year: z.number().int().nullable(),
+  earliestYear: z.number().int(),
+  totalFocusSeconds: z.number().int().nonnegative(),
+  completedSessions: z.number().int().nonnegative(),
+  days: z.array(activityInsightDaySchema),
+  categories: z.array(activityInsightCategorySchema),
+});
+
+export const screenTimeInsightDaySchema = z.object({
+  date: z.string().date(),
+  usageSeconds: z.number().int().nonnegative(),
+});
+
+export const screenTimeInsightsResponseSchema = z.object({
+  period: screenTimePeriodSchema,
+  timezone: timezoneSchema,
+  year: z.number().int().nullable(),
+  startDate: z.string().date(),
+  endDate: z.string().date(),
+  totalUsageSeconds: z.number().int().nonnegative(),
+  days: z.array(screenTimeInsightDaySchema),
+  updatedAt: z.string().datetime().nullable(),
+  apps: z.array(z.object({
+    packageName: z.string(),
+    appLabel: z.string(),
+    usageSeconds: z.number().int().nonnegative(),
+    queriedAt: z.string().datetime(),
+  })),
+});

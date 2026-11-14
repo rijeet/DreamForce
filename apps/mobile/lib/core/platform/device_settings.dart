@@ -24,6 +24,10 @@ abstract final class DeviceSettings {
         .map(
           (app) => ScreenTimeApp(
             packageName: app['packageName'] as String? ?? 'Unknown app',
+            appLabel:
+                app['appLabel'] as String? ??
+                app['packageName'] as String? ??
+                'Unknown app',
             duration: Duration(
               milliseconds: app['durationMillis'] as int? ?? 0,
             ),
@@ -103,7 +107,12 @@ class ScreenTimeUsage {
 }
 
 class ScreenTimeApp {
-  const ScreenTimeApp({required this.packageName, required this.duration});
+  const ScreenTimeApp({
+    required this.packageName,
+    required this.duration,
+    this.appLabel,
+  });
   final String packageName;
+  final String? appLabel;
   final Duration duration;
 }
