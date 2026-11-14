@@ -245,26 +245,42 @@ export async function getFocusSession(userId: string, id: string) {
   return { ...rows[0], phases };
 }
 
+export async function getCurrentFocusSession(userId: string) {
+  const rows = await sql()`SELECT id FROM focus_sessions WHERE user_id=${userId}::uuid AND status IN ('running', 'paused') ORDER BY started_at DESC LIMIT 1`;
+  const id = rows[0]?.id as string | undefined;
+  return id ? getFocusSession(userId, id) : null;
+}
+
 async function advanceDueSession(userId: string, id: string) {
-  const sessions = await sql()`SELECT * FROM focus_sessions WHERE id=${id}::uuid AND user_id=${userId}::uuid AND status='running' AND phase_target_end_at <= now()`;
-  const session = sessions[0] as Record<string, unknown> | undefined;
-  if (!session) return;
-  const index = Number(session.current_phase_index);
-  const phaseRows = await sql()`SELECT * FROM session_phases WHERE session_id=${id}::uuid ORDER BY position`;
-  const phase = phaseRows[index] as Record<string, unknown>;
-  const phaseEnd = new Date(session.phase_target_end_at as string);
-  await sql()`UPDATE session_phases SET ended_at=${phaseEnd}, actual_seconds=planned_seconds WHERE id=${phase.id as string}::uuid`;
-  const next = phaseRows[index + 1] as Record<string, unknown> | undefined;
-  if (!next) {
-    await sql()`UPDATE focus_sessions SET status='completed', current_phase='finished', phase_target_end_at=null, phase_started_at=null, ended_at=${phaseEnd}, actual_focus_seconds=(SELECT COALESCE(sum(actual_seconds),0) FROM session_phases WHERE session_id=${id}::uuid AND phase_type='focus'), actual_rest_seconds=(SELECT COALESCE(sum(actual_seconds),0) FROM session_phases WHERE session_id=${id}::uuid AND phase_type='rest'), version=version+1 WHERE id=${id}::uuid`;
-    await sql()`INSERT INTO session_events (session_id, user_id, client_event_id, event_type, occurred_at) VALUES (${id}::uuid, ${userId}::uuid, ${randomUUID()}::uuid, 'completed', ${phaseEnd})`;
-    return;
+  // A delayed client can miss more than one boundary. Catch up from each
+  // persisted target instant until the active phase is current or complete.
+  while (true) {
+    const sessions = await sql()`SELECT * FROM focus_sessions WHERE id=${id}::uuid AND user_id=${userId}::uuid AND status='running' AND phase_target_end_at <= now()`;
+    const session = sessions[0] as Record<string, unknown> | undefined;
+    if (!session) return;
+    const index = Number(session.current_phase_index);
+    const phaseRows = await sql()`SELECT * FROM session_phases WHERE session_id=${id}::uuid ORDER BY position`;
+    const phase = phaseRows[index] as Record<string, unknown> | undefined;
+    if (!phase) return;
+    const phaseEnd = new Date(session.phase_target_end_at as string);
+    const next = phaseRows[index + 1] as Record<string, unknown> | undefined;
+
+    // Marking the phase is idempotent. The version/index/target predicate below
+    // ensures only one concurrent reader advances and emits the boundary event.
+    await sql()`UPDATE session_phases SET ended_at=${phaseEnd}, actual_seconds=planned_seconds WHERE id=${phase.id as string}::uuid AND ended_at IS NULL`;
+    if (!next) {
+      const completed = await sql()`UPDATE focus_sessions SET status='completed', current_phase='finished', phase_target_end_at=null, phase_started_at=null, ended_at=${phaseEnd}, actual_focus_seconds=(SELECT COALESCE(sum(actual_seconds),0) FROM session_phases WHERE session_id=${id}::uuid AND phase_type='focus'), actual_rest_seconds=(SELECT COALESCE(sum(actual_seconds),0) FROM session_phases WHERE session_id=${id}::uuid AND phase_type='rest'), version=version+1 WHERE id=${id}::uuid AND user_id=${userId}::uuid AND status='running' AND current_phase_index=${index} AND phase_target_end_at=${session.phase_target_end_at as Date} AND phase_target_end_at <= now() RETURNING id`;
+      if (!completed[0]) continue;
+      await sql()`INSERT INTO session_events (session_id, user_id, client_event_id, event_type, occurred_at) VALUES (${id}::uuid, ${userId}::uuid, ${randomUUID()}::uuid, 'completed', ${phaseEnd})`;
+      return;
+    }
+    const nextType = next.phase_type as string;
+    const nextEnd = new Date(phaseEnd.getTime() + Number(next.planned_seconds) * 1000);
+    const advanced = await sql()`UPDATE focus_sessions SET current_phase=${nextType}, current_phase_index=${index + 1}, phase_started_at=${phaseEnd}, phase_target_end_at=${nextEnd}, version=version+1 WHERE id=${id}::uuid AND user_id=${userId}::uuid AND status='running' AND current_phase_index=${index} AND phase_target_end_at=${session.phase_target_end_at as Date} AND phase_target_end_at <= now() RETURNING id`;
+    if (!advanced[0]) continue;
+    await sql()`UPDATE session_phases SET started_at=${phaseEnd} WHERE id=${next.id as string}::uuid AND started_at IS NULL`;
+    await sql()`INSERT INTO session_events (session_id, user_id, client_event_id, event_type, occurred_at) VALUES (${id}::uuid, ${userId}::uuid, ${randomUUID()}::uuid, ${nextType === 'focus' ? 'focus_started' : 'rest_started'}, ${phaseEnd})`;
   }
-  const nextType = next.phase_type as string;
-  const nextEnd = new Date(phaseEnd.getTime() + Number(next.planned_seconds) * 1000);
-  await sql()`UPDATE session_phases SET started_at=${phaseEnd} WHERE id=${next.id as string}::uuid`;
-  await sql()`UPDATE focus_sessions SET current_phase=${nextType}, current_phase_index=${index + 1}, phase_started_at=${phaseEnd}, phase_target_end_at=${nextEnd}, version=version+1 WHERE id=${id}::uuid`;
-  await sql()`INSERT INTO session_events (session_id, user_id, client_event_id, event_type, occurred_at) VALUES (${id}::uuid, ${userId}::uuid, ${randomUUID()}::uuid, ${nextType === 'focus' ? 'focus_started' : 'rest_started'}, ${phaseEnd})`;
 }
 
 export async function submitSessionEvent(userId: string, id: string, input: SessionEventInput) {

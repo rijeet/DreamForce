@@ -51,6 +51,7 @@ for (const [method, path, requestSchema, description, tag] of mvpPaths) {
   });
 }
 registry.registerPath({ method: 'get', path: '/v1/sessions/{id}', tags: ['Focus Sessions'], security: bearerSecurity, request: { params: z.object({ id: z.string().uuid() }) }, responses: { 200: { description: 'Session snapshot' }, 404: { description: 'Session not found' } } });
+registry.registerPath({ method: 'get', path: '/v1/sessions/current', tags: ['Focus Sessions'], security: bearerSecurity, responses: { 200: { description: 'Current open session snapshot or null' } } });
 registry.registerPath({ method: 'post', path: '/v1/sessions/{id}/events', tags: ['Focus Sessions'], security: bearerSecurity, request: { params: z.object({ id: z.string().uuid() }), body: { content: { 'application/json': { schema: sessionEventSchema } } } }, responses: { 200: { description: 'Updated session snapshot' }, 409: { description: 'Invalid state transition' }, 412: { description: 'Stale session version' } } });
 registry.registerPath({ method: 'get', path: '/v1/plans/{id}', tags: ['Weekly Plans'], security: bearerSecurity, request: { params: z.object({ id: z.string().uuid() }) }, responses: { 200: { description: 'Plan and entries' }, 404: { description: 'Plan not found' } } });
 registry.registerPath({ method: 'get', path: '/v1/daily-reviews/{localDate}', tags: ['Daily Reviews'], security: bearerSecurity, request: { params: z.object({ localDate: z.string().date() }) }, responses: { 200: { description: 'Review or null' } } });

@@ -113,26 +113,28 @@ class TimerScreen extends StatelessWidget {
               ),
             ),
           const SizedBox(height: 12),
-          FilledButton(
-            onPressed: () async {
-              try {
-                await session.togglePause();
-              } catch (error) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Could not sync timer action: $error'),
-                    ),
-                  );
+          if (session.status == SessionStatus.running ||
+              session.status == SessionStatus.paused)
+            FilledButton(
+              onPressed: () async {
+                try {
+                  await session.togglePause();
+                } catch (error) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Could not sync timer action: $error'),
+                      ),
+                    );
+                  }
                 }
-              }
-            },
-            child: Text(
-              session.status == SessionStatus.running
-                  ? 'Pause session'
-                  : 'Resume session',
+              },
+              child: Text(
+                session.status == SessionStatus.running
+                    ? 'Pause session'
+                    : 'Resume session',
+              ),
             ),
-          ),
           const SizedBox(height: 10),
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(

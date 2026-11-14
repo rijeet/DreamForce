@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:dream_force/features/activities/domain/activity_draft.dart';
 import 'package:dream_force/features/auth/presentation/auth_gate.dart';
 import 'package:dream_force/features/activities/presentation/choose_activity_screen.dart';
@@ -8,8 +11,6 @@ import 'package:dream_force/features/profile/presentation/profile_screen.dart';
 import 'package:dream_force/features/today/presentation/today_screen.dart';
 import 'package:dream_force/features/timer/domain/focus_session.dart';
 import 'package:dream_force/features/auth/data/dream_force_auth_api.dart';
-
-import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
 
@@ -52,6 +53,52 @@ class _AppShellState extends State<AppShell> {
       plannedMinutes: 30,
     ),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_restoreCurrentSession());
+  }
+
+  Future<void> _restoreCurrentSession() async {
+    try {
+      final response = await const DreamForceAuthApi().request(
+        'GET',
+        '/v1/sessions/current',
+      );
+      final value = jsonDecode(response.body);
+      if (value is! Map<String, dynamic> || !mounted || _session != null) {
+        return;
+      }
+      final plannedMinutes = (value['plannedMinutes'] as num?)?.toInt() ?? 25;
+      final remoteStatus = switch (value['status']) {
+        'paused' => SessionStatus.paused,
+        'completed' => SessionStatus.completed,
+        'cancelled' => SessionStatus.cancelled,
+        _ => SessionStatus.running,
+      };
+      setState(() {
+        _session = FocusSession(
+          ActivityDraft(
+            name: value['name'] as String? ?? 'Focus session',
+            icon: Icons.timer_outlined,
+            plannedMinutes: plannedMinutes,
+          ),
+          remoteId: value['id'] as String?,
+          version: value['version'] as int? ?? 1,
+          phaseIndex: value['currentPhaseIndex'] as int? ?? 0,
+          status: remoteStatus,
+          pausedAt: DateTime.tryParse(value['pausedAt'] as String? ?? '')
+              ?.toLocal(),
+          phaseTargetEndAt: DateTime.tryParse(
+            value['phaseTargetEndAt'] as String? ?? '',
+          )?.toLocal(),
+        );
+      });
+    } catch (_) {
+      // Keep the dashboard usable if session recovery is temporarily offline.
+    }
+  }
 
   int get _selectedIndex => switch (_page) {
     _ShellPage.today ||
@@ -115,6 +162,9 @@ class _AppShellState extends State<AppShell> {
         activity,
         remoteId: remote['id'] as String?,
         version: remote['version'] as int? ?? 1,
+        phaseTargetEndAt: DateTime.tryParse(
+          remote['phaseTargetEndAt'] as String? ?? '',
+        )?.toLocal(),
       );
       _page = _ShellPage.today;
     });

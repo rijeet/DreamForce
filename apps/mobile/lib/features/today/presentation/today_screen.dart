@@ -15,7 +15,14 @@ class TodayScreen extends StatelessWidget {
   final VoidCallback onDeleteSession;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => session == null
+      ? _buildContent(context)
+      : AnimatedBuilder(
+          animation: session!,
+          builder: (context, _) => _buildContent(context),
+        );
+
+  Widget _buildContent(BuildContext context) {
     if (session?.status == SessionStatus.completed) {
       return SessionCompleteScreen(
         session: session!,
