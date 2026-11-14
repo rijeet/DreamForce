@@ -68,6 +68,9 @@ async function issueSession(user: AuthUser): Promise<SessionTokens> {
 export async function exchangeGoogleAuthorizationCode(input: {
   authorizationCode: string;
   codeVerifier: string;
+  timezone?: string;
+  termsAcceptedVersion: string;
+  screenTimeConsentVersion?: string;
 }): Promise<SessionTokens> {
   const environment = readServerEnvironment();
   const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -85,11 +88,15 @@ export async function exchangeGoogleAuthorizationCode(input: {
   const tokenBody = (await tokenResponse.json()) as { id_token?: string };
   if (!tokenBody.id_token) throw new AuthenticationError('GOOGLE_ID_TOKEN_MISSING');
 
-  return signInWithGoogleIdToken(tokenBody.id_token);
+  return signInWithGoogleIdToken(tokenBody.id_token, {
+    timezone: input.timezone,
+    termsAcceptedVersion: input.termsAcceptedVersion,
+    screenTimeConsentVersion: input.screenTimeConsentVersion,
+  });
 }
 
 /** Verifies a native Android Google ID token before issuing Dream Force tokens. */
-export async function signInWithGoogleIdToken(idToken: string, timezone?: string): Promise<SessionTokens> {
+export async function signInWithGoogleIdToken(idToken: string, preferences: { timezone?: string; termsAcceptedVersion: string; screenTimeConsentVersion?: string }): Promise<SessionTokens> {
   const environment = readServerEnvironment();
   const jwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
   let verified;
@@ -119,7 +126,7 @@ export async function signInWithGoogleIdToken(idToken: string, timezone?: string
     email,
     displayName: typeof verified.payload.name === 'string' ? verified.payload.name : null,
     avatarUrl: typeof verified.payload.picture === 'string' ? verified.payload.picture : null,
-    timezone,
+    ...preferences,
   });
   return issueSession(user);
 }
@@ -130,6 +137,8 @@ async function findOrCreateGoogleUser(identity: {
   displayName: string | null;
   avatarUrl: string | null;
   timezone?: string;
+  termsAcceptedVersion: string;
+  screenTimeConsentVersion?: string;
 }): Promise<AuthUser> {
   const sql = createDatabaseClient();
   const existing = (await sql`
@@ -141,6 +150,7 @@ async function findOrCreateGoogleUser(identity: {
     if (identity.timezone) {
       await sql`UPDATE user_profiles SET timezone=${identity.timezone} WHERE user_id=${existing[0].id}::uuid AND timezone='UTC'`;
     }
+    await saveGoogleConsent(existing[0].id, identity);
     return assertActive(existing[0]);
   }
 
@@ -160,13 +170,30 @@ async function findOrCreateGoogleUser(identity: {
     )
     SELECT id, email, role, status FROM new_user
   `) as AuthUser[];
-  if (created[0]) return created[0];
+  if (created[0]) {
+    await saveGoogleConsent(created[0].id, identity);
+    return created[0];
+  }
 
   const raced = (await sql`
     SELECT id, email, role, status FROM users WHERE google_subject = ${identity.subject} LIMIT 1
   `) as AuthUser[];
   if (!raced[0]) throw new Error('Google user creation did not return a user');
+  await saveGoogleConsent(raced[0].id, identity);
   return assertActive(raced[0]);
+}
+
+async function saveGoogleConsent(userId: string, identity: { termsAcceptedVersion: string; screenTimeConsentVersion?: string }) {
+  await createDatabaseClient()`
+    UPDATE user_settings SET
+      terms_accepted_version=COALESCE(${identity.termsAcceptedVersion ?? null}, terms_accepted_version),
+      terms_accepted_at=CASE WHEN ${Boolean(identity.termsAcceptedVersion)} THEN now() ELSE terms_accepted_at END,
+      screen_time_sync_enabled=CASE WHEN ${Boolean(identity.screenTimeConsentVersion)} THEN true ELSE screen_time_sync_enabled END,
+      screen_time_consent_version=COALESCE(${identity.screenTimeConsentVersion ?? null}, screen_time_consent_version),
+      screen_time_consent_at=CASE WHEN ${Boolean(identity.screenTimeConsentVersion)} THEN now() ELSE screen_time_consent_at END,
+      screen_time_sync_revoked_at=CASE WHEN ${Boolean(identity.screenTimeConsentVersion)} THEN NULL ELSE screen_time_sync_revoked_at END
+    WHERE user_id=${userId}::uuid
+  `;
 }
 
 export async function signInAdmin(email: string, password: string): Promise<SessionTokens> {

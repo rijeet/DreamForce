@@ -30,10 +30,40 @@ abstract final class DeviceSettings {
           ),
         )
         .toList(growable: false);
+    final dailyUsage = (data['dailyUsage'] as List<dynamic>? ?? const [])
+        .whereType<Map<dynamic, dynamic>>()
+        .map((day) {
+          final dayApps = (day['apps'] as List<dynamic>? ?? const [])
+              .whereType<Map<dynamic, dynamic>>()
+              .map(
+                (app) => ScreenTimeUsage(
+                  packageName: app['packageName'] as String? ?? 'unknown',
+                  appLabel:
+                      app['appLabel'] as String? ??
+                      app['packageName'] as String? ??
+                      'Unknown app',
+                  usageSeconds: app['usageSeconds'] as int? ?? 0,
+                ),
+              )
+              .toList(growable: false);
+          return ScreenTimeDay(
+            localDate: day['localDate'] as String? ?? '',
+            apps: dayApps,
+          );
+        })
+        .toList(growable: false);
+    final queriedAtMillis = data['queriedAtMillis'] as int?;
     return ScreenTimeSummary(
       hasPermission: data['hasPermission'] as bool? ?? false,
       total: Duration(milliseconds: data['totalMillis'] as int? ?? 0),
       apps: apps,
+      dailyUsage: dailyUsage,
+      timezoneId: data['timezoneId'] as String? ?? 'UTC',
+      queriedAt: queriedAtMillis == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(queriedAtMillis)
+                .toUtc()
+                .toIso8601String(),
     );
   }
 }
@@ -43,10 +73,33 @@ class ScreenTimeSummary {
     required this.hasPermission,
     required this.total,
     required this.apps,
+    this.dailyUsage = const [],
+    this.timezoneId = 'UTC',
+    this.queriedAt,
   });
   final bool hasPermission;
   final Duration total;
   final List<ScreenTimeApp> apps;
+  final List<ScreenTimeDay> dailyUsage;
+  final String timezoneId;
+  final String? queriedAt;
+}
+
+class ScreenTimeDay {
+  const ScreenTimeDay({required this.localDate, required this.apps});
+  final String localDate;
+  final List<ScreenTimeUsage> apps;
+}
+
+class ScreenTimeUsage {
+  const ScreenTimeUsage({
+    required this.packageName,
+    required this.appLabel,
+    required this.usageSeconds,
+  });
+  final String packageName;
+  final String appLabel;
+  final int usageSeconds;
 }
 
 class ScreenTimeApp {

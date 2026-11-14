@@ -6,6 +6,8 @@ export const healthResponseSchema = z.object({
 });
 
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
+export const CURRENT_TERMS_VERSION = 'terms-v1-2026-11-14';
+export const SCREEN_TIME_CONSENT_VERSION = 'screen-time-sync-v1';
 
 export const timezoneSchema = z.string().min(1).max(64).refine((timezone) => {
   try {
@@ -19,11 +21,16 @@ export const timezoneSchema = z.string().min(1).max(64).refine((timezone) => {
 export const googleAuthorizationCodeSchema = z.object({
   authorizationCode: z.string().min(1).max(4096),
   codeVerifier: z.string().min(43).max(128),
+  termsAcceptedVersion: z.literal(CURRENT_TERMS_VERSION),
+  screenTimeConsentVersion: z.literal(SCREEN_TIME_CONSENT_VERSION).optional(),
+  timezone: timezoneSchema.optional(),
 });
 
 export const googleIdTokenSchema = z.object({
   idToken: z.string().min(20).max(8192),
   timezone: timezoneSchema.optional(),
+  termsAcceptedVersion: z.literal(CURRENT_TERMS_VERSION),
+  screenTimeConsentVersion: z.literal(SCREEN_TIME_CONSENT_VERSION).optional(),
 });
 
 // Android sends a Google-issued ID token. Keep the PKCE variant for clients
@@ -71,7 +78,12 @@ export const updateSettingsSchema = z.object({
   hapticsEnabled: z.boolean().optional(),
   analyticsAppUsageOptIn: z.boolean().optional(),
   weekStartsOn: z.number().int().min(1).max(7).optional(),
-});
+  screenTimeSyncEnabled: z.boolean().optional(),
+  screenTimeConsentVersion: z.literal(SCREEN_TIME_CONSENT_VERSION).optional(),
+}).refine(
+  (settings) => settings.screenTimeSyncEnabled !== true || Boolean(settings.screenTimeConsentVersion),
+  { path: ['screenTimeConsentVersion'], message: 'A consent version is required to enable screen-time sync.' },
+);
 
 export const activityTemplateSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -118,3 +130,19 @@ export const dailyReviewSchema = z.object({
   reasonTags: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
   version: z.number().int().positive().optional(),
 });
+
+export const screenTimeUsageRowSchema = z.object({
+  localDate: z.string().date(),
+  timezoneId: timezoneSchema,
+  packageName: z.string().trim().min(1).max(255),
+  appLabel: z.string().trim().min(1).max(160),
+  usageSeconds: z.number().int().min(0).max(86400),
+});
+export const screenTimeUploadSchema = z.object({
+  queriedAt: z.string().datetime(),
+  rows: z.array(screenTimeUsageRowSchema).min(1).max(20000),
+}).refine(({ rows }) => {
+  const keys = rows.map((row) => `${row.localDate}|${row.timezoneId}|${row.packageName}`);
+  return new Set(keys).size === keys.length;
+}, { path: ['rows'], message: 'Each app may appear once per local date and timezone.' });
+export const screenTimePeriodSchema = z.enum(['day', 'week', 'month', 'year']);

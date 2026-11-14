@@ -131,8 +131,8 @@ Use semantic tokens in implementation; individual screens must not introduce una
 
 ### Create account
 
-- **Layout, top to bottom:** Status bar; short brand/value header; private-account reassurance; Google sign-in button; Terms and Privacy consent checkbox; small explanatory copy.
-- **Key elements:** Continue with Google; Terms and Conditions link; Privacy Policy link; consent checkbox.
+- **Layout, top to bottom:** Status bar; short brand/value header; private-account reassurance; required Terms/Privacy acknowledgement; optional screen-time cloud-sync consent; Google sign-in button; disclosure copy.
+- **Key elements:** Continue with Google; required Terms and Privacy checkbox; separate default-off screen-time sync checkbox naming uploaded fields and purpose.
 - **Primary action:** Google sign-in only becomes available after the agreement is acknowledged.
 
 ### Today
@@ -188,13 +188,13 @@ Use semantic tokens in implementation; individual screens must not introduce una
 
 ### Insights: Screen time (Android only)
 
-- **Layout, top to bottom:** Page title; segment control; period picker; screen-time total; donut chart; heatmap; selected-day comparison; KPI grid; all-app list; local-only privacy explanation and Manage Usage access action.
-- **Key elements:** App icon/fallback, app name, duration, percentage, usage bar, Android-data update context.
+- **Layout, top to bottom:** Page title; segment control; period picker; account-sync control; screen-time total; donut chart; heatmap; selected-day comparison; all-app list; sync status and Manage Usage access action.
+- **Key elements:** App icon/fallback, app name, duration, percentage, usage bar, update time, cloud-sync status, revoke-and-delete action.
 - **Platform rule:** Do not render this view on iOS.
 
 ### Usage access explanation (Android only)
 
-- **Layout, top to bottom:** Title; reassurance that core features work without permission; explanation of local-only usage data; current permission status; Open Settings and Not now actions.
+- **Layout, top to bottom:** Title; reassurance that core features work without permission; explanation of Android Usage Access and optional account sync as separate choices; current permission status; Open Settings and Not now actions.
 - **Key elements:** No simulated Android permission dialog. Explicitly explain the Settings handoff.
 
 ### Profile and settings

@@ -25,7 +25,7 @@ This document locks the implementation choices for the Dream Force MVP. Product 
 | Cache / idempotency | Upstash Redis over its REST client; PostgreSQL remains the durable source of truth |
 | Background jobs | Upstash QStash invokes protected Vercel job routes for exports, deletion workflow, retryable notifications, and cleanup |
 | Hosting | Vercel Functions with Fluid Compute, Vercel Cron, managed secrets, centralized logs, Neon PostgreSQL, Upstash Redis/QStash, and object storage |
-| Android app usage | Android `UsageStatsManager`; raw app usage stays encrypted/device-local. Explicit opt-in may send privacy-bounded anonymous daily aggregates for Top 10 app reporting; admins never see an individual's app list/timeline |
+| Android app usage | Android `UsageStatsManager`; encrypted device cache plus optional owner-private daily aggregates in Neon after versioned consent and Android Usage Access; no raw timeline; admins cannot read per-user usage |
 | iOS external app usage | Not implemented in this release |
 
 Every dependency must be pinned in its lockfile. The team chooses the current supported stable release at project bootstrap and records exact versions in the repository’s `docs/versions.md`; this TRD deliberately does not freeze transient package versions.
@@ -97,7 +97,7 @@ The schedule generator accepts only total duration and produces immutable phase 
 
 ### 4.4 Platform integrations
 
-**Android:** Use a foreground service only while a timer session needs it and present a user-visible ongoing notification. Declare and justify the exact Android 14+/15 foreground-service type in the manifest and Play policy submission before release; validate the choice against the target SDK and current policy. Use a local notification for phase completion, respecting system notification permissions. Screen-time collection requires the user to grant Usage Access from Android Settings. The Kotlin bridge queries `UsageEvents` for each local-midnight-to-midnight interval and reconstructs foreground durations from `ACTIVITY_RESUMED`/`ACTIVITY_PAUSED` pairs; it does not rely on `queryUsageStats(INTERVAL_DAILY)` for the raw reconstruction. Encrypt raw app-level records locally. A separate, default-off analytics consent may contribute a daily, privacy-bounded aggregate to the Top 10 Apps report; do not upload an identifiable user app timeline.
+**Android:** Use a foreground service only while a timer session needs it and present a user-visible ongoing notification. Declare and justify the exact Android 14+/15 foreground-service type in the manifest and Play policy submission before release; validate the choice against the target SDK and current policy. Use a local notification for phase completion, respecting system notification permissions. Screen-time collection requires Android Usage Access. The Kotlin bridge queries Android's calendar-aligned `UsageStatsManager.INTERVAL_DAILY` aggregates and stores daily app totals locally. A separate versioned account-sync consent is required before uploading `(local_date, timezone_id, package_name, app_label, usage_seconds)` records to the signed-in user's account. Do not upload raw foreground events or timelines. CRM Top 10 remains a separate anonymous analytics consent and aggregate.
 
 **iOS:** Use Live Activities when supported and authorized. Keep an in-app timer fully functional when Live Activities or notification permission is unavailable. Do not expose other-app screen-time features on iOS.
 
@@ -143,7 +143,7 @@ Upstash QStash delivers signed requests to protected Vercel job routes for accou
 
 ### 6.2 Local mobile data
 
-Encrypted SQLite stores cached API resources, active-session recovery state, outbox items, and Android usage aggregates. Google tokens, admin/user session tokens, encryption keys, and database-key material belong in Android Keystore or iOS Keychain only. Android disables backups for the encrypted database (`android:allowBackup="false"`, `android:fullBackupContent="false"`). If key material is invalidated or decryption fails (for example `AEADBadTagException`), preserve recoverable auth state when possible, delete only the unreadable local database, re-create it, and resync; never loop on an unreadable key. Clearing local Android usage history removes raw UsageStats-derived rows; it does not retroactively change already-contributed anonymous aggregate reports.
+Encrypted SQLite stores cached API resources, active-session recovery state, outbox items, and Android usage aggregates. Google tokens, admin/user session tokens, encryption keys, and database-key material belong in Android Keystore or iOS Keychain only. Android disables backups for the encrypted database (`android:allowBackup="false"`, `android:fullBackupContent="false"`). If key material is invalidated or decryption fails (for example `AEADBadTagException`), preserve recoverable auth state when possible, delete only the unreadable local database, re-create it, and resync; never loop on an unreadable key. Clearing local Android usage history removes device rows; cloud rows are separate and are deleted when screen-time sync is revoked or the account is deleted.
 
 ## 7. Security and privacy
 
@@ -153,7 +153,7 @@ Encrypted SQLite stores cached API resources, active-session recovery state, out
 - Rate-limit sign-in callback validation, session creation, exports, account deletion, and other write-heavy operations.
 - Redact access tokens, email, profile fields, review text, Android package names, and usage totals from application logs and telemetry.
 - Profile gender and date of birth are optional, private, and excluded from notifications, support tooling, analytics, and lock-screen content by default.
-- Raw Android third-party-app usage never leaves the device in this MVP. The only permitted exception is a separately consented, non-identifiable daily aggregate used for Top 10 app reporting; users can revoke future contribution at any time.
+- Per-user Android usage uploads are disabled by default and require versioned affirmative consent plus Android Usage Access. Only local-day per-app aggregates are stored; no raw event timeline is uploaded. Revoking sync blocks future writes and deletes that user's uploaded rows. Admins and support cannot read these rows. CRM Top 10 remains a separately consented, anonymous aggregate.
 - Follow the OWASP API Security Top 10 as a release threat-model checklist.
 
 ## 8. Observability and operations
@@ -191,13 +191,13 @@ CI blocks a merge when formatting, static checks, unit tests, contract validatio
 2. Build profile, activity-template, plan, and review API resources with authorization tests.
 3. Build Flutter authentication, encrypted persistence, outbox, profile editor, activity picker/creator, and weekly plan editing.
 4. Implement the deterministic timer engine, session APIs, background recovery, Android notification service, and iOS Live Activity bridge.
-5. Deliver Insights using completed focus sessions; then add Android-only UsageStats ingestion, permission experience, opt-in aggregate contribution, and Top 10 report.
+5. Deliver Insights using completed focus sessions and Android-only UsageStats daily aggregates; implement Usage Access, versioned per-user sync consent, owner-scoped API sync/revocation, then the separate anonymous Top 10 report.
 6. Deliver the admin CRM: RBAC, ticket resolution, global activity/weekly-plan templates, notification campaigns, aggregate activity metrics, top performers, and Top 10 app reports.
 7. Run security review, migration/restore test, accessibility test pass, staged beta, and production readiness review.
 
 ## 12. Explicitly out of scope
 
-- Per-user cloud sync or CRM inspection of Android third-party-app usage.
+- Raw Android usage timelines or CRM inspection of an individual user's app-usage records.
 - iOS third-party-app screen-time tracking.
 - A guaranteed per-second lock-screen redraw while an app is suspended.
 - Rewards, social features, billing, ads, and AI analysis of review text.

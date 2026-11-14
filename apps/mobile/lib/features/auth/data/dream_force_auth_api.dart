@@ -9,6 +9,9 @@ import 'package:http/http.dart' as http;
 class DreamForceAuthApi {
   const DreamForceAuthApi();
 
+  static const termsAcceptedVersion = 'terms-v1-2026-11-14';
+  static const screenTimeConsentVersion = 'screen-time-sync-v1';
+
   static const _baseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'https://dream-force-backend.vercel.app',
@@ -18,10 +21,21 @@ class DreamForceAuthApi {
   static const _refreshKey = 'dream_force_refresh_token';
   static const _timeout = Duration(seconds: 25);
 
-  Future<void> exchangeGoogleIdToken(String idToken, {String? timezone}) async {
+  Future<void> exchangeGoogleIdToken(
+    String idToken, {
+    String? timezone,
+    required String termsVersion,
+    String? screenTimeConsentVersion,
+  }) async {
     if (kDebugMode) await checkReadiness();
-    final requestBody = <String, String>{'idToken': idToken};
+    final requestBody = <String, String>{
+      'idToken': idToken,
+      'termsAcceptedVersion': termsVersion,
+    };
     if (timezone != null) requestBody['timezone'] = timezone;
+    if (screenTimeConsentVersion != null) {
+      requestBody['screenTimeConsentVersion'] = screenTimeConsentVersion;
+    }
     final response = await _send(
       () => http.post(
         Uri.parse('$_baseUrl/v1/auth/google'),
@@ -211,6 +225,7 @@ class DreamForceAuthApi {
       'INVALID_API_RESPONSE' =>
         'The backend returned an invalid response. Check the Vercel deployment logs. (INVALID_API_RESPONSE)$suffix',
       'INTERNAL_ERROR' => 'The backend failed while processing sign-in. Check Vercel logs and confirm required environment variables are set. (INTERNAL_ERROR)',
+      'SCREEN_TIME_SYNC_CONSENT_REQUIRED' => 'Enable screen-time sync consent in Insights before uploading this data. (SCREEN_TIME_SYNC_CONSENT_REQUIRED)',
       'HTTP_429' =>
         'Too many sign-in attempts. Wait a moment and retry. (HTTP_429)',
       _ => 'Sign-in failed with HTTP $status ($code).$suffix',

@@ -10,7 +10,11 @@ export async function POST(request: Request) {
   try {
     const input = await parseJson(request, googleSignInSchema);
     const tokens = 'idToken' in input
-      ? await signInWithGoogleIdToken(input.idToken, input.timezone)
+      ? await signInWithGoogleIdToken(input.idToken, {
+          timezone: input.timezone,
+          termsAcceptedVersion: input.termsAcceptedVersion,
+          screenTimeConsentVersion: input.screenTimeConsentVersion,
+        })
       : await exchangeGoogleAuthorizationCode(input);
     return NextResponse.json(sessionTokenResponseSchema.parse(tokens), { status: 201 });
   } catch (error) {

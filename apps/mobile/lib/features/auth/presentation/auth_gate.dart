@@ -31,6 +31,8 @@ class _AuthGateState extends State<AuthGate> {
   String? _error;
   var _loading = true;
   var _signingIn = false;
+  var _termsAccepted = false;
+  var _screenTimeSyncConsent = false;
   @override
   void initState() {
     super.initState();
@@ -45,15 +47,35 @@ class _AuthGateState extends State<AuthGate> {
             .attemptLightweightAuthentication();
         if (account != null && await const DreamForceAuthApi().hasSession()) {
           if (kDebugMode) await const DreamForceAuthApi().checkReadiness();
-          _user = SignedInUser(
-            account.email,
-            account.displayName,
-            account.photoUrl,
-          );
-          try {
-            await _syncLegacyTimezone();
-          } catch (_) {
-            // Restoring an existing session should remain usable offline.
+          final api = const DreamForceAuthApi();
+          final profile = jsonDecode(
+            (await api.request('GET', '/v1/me')).body,
+          ) as Map<String, dynamic>;
+          if (profile['termsAcceptedVersion'] !=
+              DreamForceAuthApi.termsAcceptedVersion) {
+            await api.clearSession();
+            _error = 'Please review and accept the current Terms and Privacy notice to continue.';
+          } else {
+            _user = SignedInUser(
+              account.email,
+              account.displayName,
+              account.photoUrl,
+            );
+            if (profile['timezone'] == 'UTC') {
+              try {
+                await api.request(
+                  'PATCH',
+                  '/v1/me',
+                  body: {
+                    'profile': {
+                      'timezone': await DeviceSettings.getDeviceTimezone(),
+                    },
+                  },
+                );
+              } catch (_) {
+                // Keep a restored session usable if only the legacy timezone sync fails.
+              }
+            }
           }
         }
       }
@@ -87,6 +109,10 @@ class _AuthGateState extends State<AuthGate> {
       await const DreamForceAuthApi().exchangeGoogleIdToken(
         idToken,
         timezone: await DeviceSettings.getDeviceTimezone(),
+        termsVersion: DreamForceAuthApi.termsAcceptedVersion,
+        screenTimeConsentVersion: _screenTimeSyncConsent
+            ? DreamForceAuthApi.screenTimeConsentVersion
+            : null,
       );
       if (mounted) {
         setState(
@@ -135,22 +161,6 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
-  Future<void> _syncLegacyTimezone() async {
-    final api = const DreamForceAuthApi();
-    final profile = jsonDecode(
-      (await api.request('GET', '/v1/me')).body,
-    ) as Map<String, dynamic>;
-    if (profile['timezone'] == 'UTC') {
-      await api.request(
-        'PATCH',
-        '/v1/me',
-        body: {
-          'profile': {'timezone': await DeviceSettings.getDeviceTimezone()},
-        },
-      );
-    }
-  }
-
   String _safeError(Object error) {
     final message = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
     return message.length > 180 ? '${message.substring(0, 180)}…' : message;
@@ -160,7 +170,16 @@ class _AuthGateState extends State<AuthGate> {
   Widget build(BuildContext context) {
     if (_loading) return const SplashScreen();
     if (_user != null) return widget.child(_user!, _logout);
-    return AccountScreen(error: _error, loading: _signingIn, onSignIn: _signIn);
+    return AccountScreen(
+      error: _error,
+      loading: _signingIn,
+      termsAccepted: _termsAccepted,
+      screenTimeSyncConsent: _screenTimeSyncConsent,
+      onTermsAcceptedChanged: (value) => setState(() => _termsAccepted = value),
+      onScreenTimeSyncConsentChanged: (value) =>
+          setState(() => _screenTimeSyncConsent = value),
+      onSignIn: _signIn,
+    );
   }
 }
 
@@ -198,63 +217,93 @@ class AccountScreen extends StatelessWidget {
   const AccountScreen({
     required this.error,
     required this.loading,
+    required this.termsAccepted,
+    required this.screenTimeSyncConsent,
+    required this.onTermsAcceptedChanged,
+    required this.onScreenTimeSyncConsentChanged,
     required this.onSignIn,
     super.key,
   });
   final String? error;
   final bool loading;
+  final bool termsAccepted;
+  final bool screenTimeSyncConsent;
+  final ValueChanged<bool> onTermsAcceptedChanged;
+  final ValueChanged<bool> onScreenTimeSyncConsentChanged;
   final VoidCallback onSignIn;
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(
-      child: Padding(
+      child: ListView(
         padding: const EdgeInsets.all(28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Spacer(),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Image.asset(
-                'assets/images/logo.jpg',
-                height: 92,
-                fit: BoxFit.cover,
+        children: [
+          const SizedBox(height: 20),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Image.asset(
+              'assets/images/logo.jpg',
+              height: 92,
+              fit: BoxFit.cover,
+            ),
+          ),
+          const SizedBox(height: 28),
+          Text(
+            'Create account',
+            style: Theme.of(context).textTheme.headlineLarge,
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Sign in with Google to protect your activities, plans, and session history.',
+          ),
+          const SizedBox(height: 24),
+          if (error != null)
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(error!),
               ),
             ),
-            const SizedBox(height: 28),
-            Text(
-              'Create account',
-              style: Theme.of(context).textTheme.headlineLarge,
+          const SizedBox(height: 8),
+          CheckboxListTile(
+            value: termsAccepted,
+            onChanged: loading
+                ? null
+                : (value) => onTermsAcceptedChanged(value ?? false),
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text(
+              'I have read the Privacy Policy and agree to the Terms and Conditions.',
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Sign in with Google to protect your activities, plans, and session history.',
+          ),
+          CheckboxListTile(
+            value: screenTimeSyncConsent,
+            onChanged: loading
+                ? null
+                : (value) => onScreenTimeSyncConsentChanged(value ?? false),
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text(
+              'I consent to sync daily screen-time summaries to my account.',
             ),
-            const SizedBox(height: 24),
-            if (error != null)
-              Card(
-                color: Theme.of(context).colorScheme.errorContainer,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(error!),
-                ),
-              ),
-            const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: loading ? null : onSignIn,
-              icon: const Icon(Icons.account_circle_outlined),
-              label: Text(
-                loading ? 'Connecting to Google…' : 'Continue with Google',
-              ),
+            subtitle: const Text(
+              'App names, daily totals, local dates, and time zone are stored in your account for Screen time Insights. No event timeline is uploaded. Turn sync off any time in Insights to delete synced data.',
             ),
-            const SizedBox(height: 12),
-            const Text(
-              'By continuing, you agree to the Privacy Policy and Terms.',
-              textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: loading || !termsAccepted ? null : onSignIn,
+            icon: const Icon(Icons.account_circle_outlined),
+            label: Text(
+              loading ? 'Connecting to Google…' : 'Continue with Google',
             ),
-            const Spacer(),
-          ],
-        ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Screen-time sync is optional and also requires Android Usage Access.',
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     ),
   );

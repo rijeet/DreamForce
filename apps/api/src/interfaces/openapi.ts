@@ -1,5 +1,5 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
-import { activityTemplateSchema, adminSignInSchema, createSessionSchema, dailyReviewSchema, googleSignInSchema, healthResponseSchema, refreshSessionSchema, sessionEventSchema, sessionTokenResponseSchema, updateProfileSchema, weeklyPlanSchema } from '@dream-force/api-contract';
+import { activityTemplateSchema, adminSignInSchema, createSessionSchema, dailyReviewSchema, googleSignInSchema, healthResponseSchema, refreshSessionSchema, screenTimePeriodSchema, screenTimeUploadSchema, sessionEventSchema, sessionTokenResponseSchema, updateProfileSchema, weeklyPlanSchema, timezoneSchema } from '@dream-force/api-contract';
 import { z } from 'zod';
 
 extendZodWithOpenApi(z);
@@ -26,6 +26,8 @@ registry.registerPath({
 
 registry.registerPath({ method: 'get', path: '/v1/ready', tags: ['System'], description: 'Checks required runtime dependencies: Neon PostgreSQL and Upstash Redis.', responses: { 200: { description: 'Neon and Upstash Redis are available' }, 503: { description: 'A required dependency is unavailable' } } });
 registry.registerPath({ method: 'get', path: '/v1/insights/activity', tags: ['Insights'], description: 'Returns completed focus time grouped into the selected period using the user profile timezone.', security: [{ bearerAuth: [] }], request: { query: z.object({ period: z.enum(['day', 'week', 'month', 'year']).optional() }) }, responses: { 200: { description: 'Focus activity insight summary' }, 401: { description: 'Access token required' } } });
+registry.registerPath({ method: 'get', path: '/v1/me/screen-time', tags: ['Insights'], description: 'Reads the signed-in user’s app-level daily usage aggregates. Requires recorded screen-time consent.', security: [{ bearerAuth: [] }], request: { query: z.object({ period: screenTimePeriodSchema.optional(), timezone: timezoneSchema.optional() }) }, responses: { 200: { description: 'Per-app screen-time summary' }, 403: { description: 'Screen-time sync consent is not enabled' } } });
+registry.registerPath({ method: 'put', path: '/v1/me/screen-time', tags: ['Insights'], description: 'Upserts Android per-app daily usage totals after explicit consent. No raw foreground event timeline is accepted.', security: [{ bearerAuth: [] }], request: { body: { content: { 'application/json': { schema: screenTimeUploadSchema } } } }, responses: { 200: { description: 'Usage aggregates saved' }, 403: { description: 'Screen-time sync consent is not enabled' } } });
 
 const bearerSecurity = [{ bearerAuth: [] }];
 const mvpPaths = [

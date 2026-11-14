@@ -22,6 +22,9 @@ class _InsightsScreenState extends State<InsightsScreen>
   String? _error;
   Map<String, dynamic>? _activity;
   ScreenTimeSummary? _screenTime;
+  ScreenTimeSummary? _localScreenTime;
+  bool _screenTimeSyncEnabled = false;
+  bool _syncingScreenTime = false;
 
   @override
   void initState() {
@@ -77,12 +80,86 @@ class _InsightsScreenState extends State<InsightsScreen>
       _error = null;
     });
     try {
-      final data = await DeviceSettings.getScreenTime(_period.name);
+      final localData = await DeviceSettings.getScreenTime(_period.name);
       if (mounted) {
         setState(() {
-          _screenTime = data;
+          _screenTime = localData;
+          _localScreenTime = localData;
           _loading = false;
         });
+      }
+
+      try {
+        final profile = jsonDecode(
+          (await _api.request('GET', '/v1/me')).body,
+        ) as Map<String, dynamic>;
+        final syncEnabled = profile['screenTimeSyncEnabled'] as bool? ?? false;
+        if (mounted) setState(() => _screenTimeSyncEnabled = syncEnabled);
+        if (!localData.hasPermission || !syncEnabled) return;
+
+        final rows = [
+          for (final day in localData.dailyUsage)
+            for (final app in day.apps)
+              if (app.usageSeconds > 0)
+                {
+                  'localDate': day.localDate,
+                  'timezoneId': localData.timezoneId,
+                  'packageName': app.packageName,
+                  'appLabel': app.appLabel,
+                  'usageSeconds': app.usageSeconds,
+                },
+        ];
+        if (rows.isNotEmpty) {
+          if (mounted) setState(() => _syncingScreenTime = true);
+          for (var offset = 0; offset < rows.length; offset += 5000) {
+            await _api.request(
+              'PUT',
+              '/v1/me/screen-time',
+              body: {
+                'queriedAt': localData.queriedAt,
+                'rows': rows.skip(offset).take(5000).toList(growable: false),
+              },
+            );
+          }
+        }
+        final query = Uri(
+          queryParameters: {
+            'period': _period.name,
+            'timezone': localData.timezoneId,
+          },
+        ).query;
+        final response = await _api.request('GET', '/v1/me/screen-time?$query');
+        final remote = jsonDecode(response.body) as Map<String, dynamic>;
+        final remoteApps = (remote['apps'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(
+              (app) => ScreenTimeApp(
+                packageName:
+                    app['appLabel'] as String? ??
+                    app['packageName'] as String? ??
+                    'Unknown app',
+                duration: Duration(seconds: app['usageSeconds'] as int? ?? 0),
+              ),
+            )
+            .toList(growable: false);
+        if (mounted) {
+          setState(() {
+            _screenTime = ScreenTimeSummary(
+              hasPermission: true,
+              total: Duration(
+                seconds: remote['totalUsageSeconds'] as int? ?? 0,
+              ),
+              apps: remoteApps,
+              timezoneId: localData.timezoneId,
+              queriedAt: remote['updatedAt'] as String?,
+            );
+            _error = null;
+          });
+        }
+      } catch (error) {
+        if (mounted) setState(() => _error = _readableError(error));
+      } finally {
+        if (mounted) setState(() => _syncingScreenTime = false);
       }
     } catch (error) {
       if (mounted) {
@@ -91,6 +168,57 @@ class _InsightsScreenState extends State<InsightsScreen>
           _loading = false;
         });
       }
+    }
+  }
+
+  Future<void> _setScreenTimeSync(bool enabled) async {
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          enabled ? 'Sync screen time?' : 'Turn off screen-time sync?',
+        ),
+        content: Text(
+          enabled
+              ? 'Daily app names, usage totals, local dates, and your time zone will be uploaded to your private account for Screen time Insights. No raw event timeline is uploaded. You can turn this off later.'
+              : 'This stops future uploads and deletes the screen-time records already stored in your account. Android Usage Access remains a separate device permission.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(enabled ? 'I consent' : 'Turn off and delete'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true) return;
+    try {
+      await _api.request(
+        'PATCH',
+        '/v1/me',
+        body: {
+          'settings': {
+            'screenTimeSyncEnabled': enabled,
+            if (enabled)
+              'screenTimeConsentVersion':
+                  DreamForceAuthApi.screenTimeConsentVersion,
+          },
+        },
+      );
+      if (mounted) {
+        setState(() {
+          _screenTimeSyncEnabled = enabled;
+          _error = null;
+          if (!enabled) _screenTime = _localScreenTime;
+        });
+      }
+      if (enabled) await _loadScreenTime();
+    } catch (error) {
+      if (mounted) setState(() => _error = _readableError(error));
     }
   }
 
@@ -160,7 +288,7 @@ class _InsightsScreenState extends State<InsightsScreen>
           padding: EdgeInsets.all(32),
           child: Center(child: CircularProgressIndicator()),
         )
-      else if (_error != null)
+      else if (_error != null && !(_screen == 1 && _screenTime != null))
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -331,24 +459,31 @@ class _InsightsScreenState extends State<InsightsScreen>
   Widget _screenTimeContent(BuildContext context) {
     final summary = _screenTime;
     if (summary == null || !summary.hasPermission) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Screen time is available on this Android device after Usage Access is enabled. This data stays on your device.',
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _screenTimeSyncCard(),
+          if (_error != null) _syncErrorCard(),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Android needs Usage Access permission to read app totals. Cloud sync starts only when you enable sync and grant this Android permission.',
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: DeviceSettings.openUsageAccessSettings,
+                    icon: const Icon(Icons.settings_outlined),
+                    label: const Text('Set up Usage Access'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: DeviceSettings.openUsageAccessSettings,
-                icon: const Icon(Icons.settings_outlined),
-                label: const Text('Set up Usage Access'),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       );
     }
     final colors = [
@@ -368,6 +503,8 @@ class _InsightsScreenState extends State<InsightsScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _screenTimeSyncCard(),
+        if (_error != null) _syncErrorCard(),
         Card(
           color: Theme.of(context).colorScheme.primaryContainer,
           child: Padding(
@@ -384,7 +521,11 @@ class _InsightsScreenState extends State<InsightsScreen>
                   _formatDuration(summary.total),
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
-                Text('Reported by Android · stays on this device'),
+                Text(
+                  _screenTimeSyncEnabled
+                      ? 'Synced to your account · ${_updatedLabel(summary.queriedAt)}'
+                      : 'On this device only · Android Usage Access',
+                ),
               ],
             ),
           ),
@@ -480,6 +621,47 @@ class _InsightsScreenState extends State<InsightsScreen>
         ),
       ],
     );
+  }
+
+  Widget _screenTimeSyncCard() => Card(
+    child: SwitchListTile(
+      value: _screenTimeSyncEnabled,
+      onChanged: _syncingScreenTime ? null : _setScreenTimeSync,
+      title: Text(
+        _screenTimeSyncEnabled
+            ? 'Screen-time sync is on'
+            : 'Sync screen time to your account',
+      ),
+      subtitle: Text(
+        _screenTimeSyncEnabled
+            ? 'Daily app totals are stored in your private account. Turning this off deletes synced records.'
+            : 'Optional: upload daily app names and totals for cross-device Screen time Insights. No event timeline is uploaded.',
+      ),
+      secondary: _syncingScreenTime
+          ? const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.cloud_sync_outlined),
+    ),
+  );
+
+  Widget _syncErrorCard() => Card(
+    color: Theme.of(context).colorScheme.errorContainer,
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Text(
+        'Screen-time cloud sync failed. The Android summary remains available on this device. $_error',
+      ),
+    ),
+  );
+
+  String _updatedLabel(String? value) {
+    if (value == null) return 'not synced yet';
+    final date = DateTime.tryParse(value)?.toLocal();
+    if (date == null) return 'not synced yet';
+    return 'updated ${date.month}/${date.day} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 
   Widget _legend(ScreenTimeApp app, Color color, int total) => Padding(

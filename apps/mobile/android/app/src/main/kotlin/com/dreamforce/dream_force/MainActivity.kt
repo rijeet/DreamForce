@@ -7,7 +7,10 @@ import android.os.Process
 import android.provider.Settings
 import android.os.Build
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import java.util.TimeZone
+import java.text.SimpleDateFormat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -60,14 +63,30 @@ class MainActivity : FlutterActivity() {
         val start = calendar.timeInMillis
         val end = System.currentTimeMillis()
         val manager = getSystemService(USAGE_STATS_SERVICE) as UsageStatsManager
-        val usage = manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
+        val usageRows = manager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, start, end)
             .orEmpty()
             .filter { it.totalTimeInForeground > 0 }
+        val appLabels = usageRows.map { it.packageName }.distinct().associateWith(::displayAppLabel)
+        val dailyUsage = usageRows
+            .groupBy { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it.firstTimeStamp)) }
+            .toSortedMap()
+            .map { (localDate, dailyRows) ->
+                val dailyApps = dailyRows.groupBy { it.packageName }
+                    .map { (name, rows) ->
+                        mapOf(
+                            "packageName" to name,
+                            "appLabel" to (appLabels[name] ?: name),
+                            "usageSeconds" to (rows.sumOf { it.totalTimeInForeground } / 1000L).toInt(),
+                        )
+                    }
+                mapOf("localDate" to localDate, "apps" to dailyApps)
+            }
+        val usage = usageRows
             .groupBy { it.packageName }
             .map { (name, rows) -> name to rows.sumOf { it.totalTimeInForeground } }
             .sortedByDescending { it.second }
         val topApps = usage.take(9).map { (name, duration) ->
-            mapOf("packageName" to name, "durationMillis" to duration)
+            mapOf("packageName" to (appLabels[name] ?: name), "durationMillis" to duration)
         }
         val otherDuration = usage.drop(9).sumOf { it.second }
         val apps = topApps + if (otherDuration > 0) {
@@ -77,8 +96,19 @@ class MainActivity : FlutterActivity() {
         }
         return mapOf(
             "hasPermission" to true,
+            "timezoneId" to TimeZone.getDefault().id,
+            "queriedAtMillis" to end,
             "totalMillis" to usage.sumOf { it.second },
             "apps" to apps,
+            "dailyUsage" to dailyUsage,
         )
+    }
+
+    private fun displayAppLabel(packageName: String): String = try {
+        @Suppress("DEPRECATION")
+        val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
+        packageManager.getApplicationLabel(applicationInfo).toString().take(160)
+    } catch (_: Exception) {
+        packageName
     }
 }

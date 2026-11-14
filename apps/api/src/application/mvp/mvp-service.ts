@@ -34,7 +34,8 @@ export async function getProfile(userId: string) {
   const rows = await sql()`SELECT u.id, u.email, u.display_name AS "displayName", u.avatar_url AS "avatarUrl", u.locale,
     p.gender, p.date_of_birth AS "dateOfBirth", p.country, p.city, p.profession, p.timezone,
     s.theme_preference AS "themePreference", s.phase_notifications_enabled AS "phaseNotificationsEnabled",
-    s.sound_enabled AS "soundEnabled", s.haptics_enabled AS "hapticsEnabled", s.analytics_app_usage_opt_in AS "analyticsAppUsageOptIn", s.week_starts_on AS "weekStartsOn"
+    s.sound_enabled AS "soundEnabled", s.haptics_enabled AS "hapticsEnabled", s.analytics_app_usage_opt_in AS "analyticsAppUsageOptIn", s.week_starts_on AS "weekStartsOn",
+    s.screen_time_sync_enabled AS "screenTimeSyncEnabled", s.screen_time_consent_version AS "screenTimeConsentVersion", s.terms_accepted_version AS "termsAcceptedVersion"
     FROM users u JOIN user_profiles p ON p.user_id = u.id JOIN user_settings s ON s.user_id = u.id WHERE u.id = ${userId}::uuid`;
   if (!rows[0]) notFound('PROFILE_NOT_FOUND');
   return rows[0];
@@ -60,8 +61,95 @@ export async function updateProfile(userId: string, input: ProfileInput) {
 
 export async function updateSettings(userId: string, input: SettingsInput) {
   const current = await getProfile(userId);
-  await sql()`UPDATE user_settings SET theme_preference=${input.themePreference ?? current.themePreference}, phase_notifications_enabled=${input.phaseNotificationsEnabled ?? current.phaseNotificationsEnabled}, sound_enabled=${input.soundEnabled ?? current.soundEnabled}, haptics_enabled=${input.hapticsEnabled ?? current.hapticsEnabled}, analytics_app_usage_opt_in=${input.analyticsAppUsageOptIn ?? current.analyticsAppUsageOptIn}, week_starts_on=${input.weekStartsOn ?? current.weekStartsOn} WHERE user_id=${userId}::uuid`;
+  const enablingScreenTimeSync = input.screenTimeSyncEnabled === true;
+  const revokingScreenTimeSync = input.screenTimeSyncEnabled === false;
+  await sql()`
+    WITH changed AS (
+      UPDATE user_settings SET
+        theme_preference=${input.themePreference ?? current.themePreference},
+        phase_notifications_enabled=${input.phaseNotificationsEnabled ?? current.phaseNotificationsEnabled},
+        sound_enabled=${input.soundEnabled ?? current.soundEnabled},
+        haptics_enabled=${input.hapticsEnabled ?? current.hapticsEnabled},
+        analytics_app_usage_opt_in=${input.analyticsAppUsageOptIn ?? current.analyticsAppUsageOptIn},
+        week_starts_on=${input.weekStartsOn ?? current.weekStartsOn},
+        screen_time_sync_enabled=${input.screenTimeSyncEnabled ?? current.screenTimeSyncEnabled},
+        screen_time_consent_version=CASE WHEN ${enablingScreenTimeSync} THEN ${input.screenTimeConsentVersion ?? null} ELSE screen_time_consent_version END,
+        screen_time_consent_at=CASE WHEN ${enablingScreenTimeSync} THEN now() ELSE screen_time_consent_at END,
+        screen_time_sync_revoked_at=CASE WHEN ${revokingScreenTimeSync} THEN now() WHEN ${enablingScreenTimeSync} THEN NULL ELSE screen_time_sync_revoked_at END
+      WHERE user_id=${userId}::uuid
+      RETURNING user_id
+    ), removed AS (
+      DELETE FROM user_app_usage_daily USING changed
+      WHERE user_app_usage_daily.user_id=changed.user_id AND ${revokingScreenTimeSync}
+      RETURNING user_app_usage_daily.user_id
+    )
+    SELECT user_id FROM changed
+  `;
   return getProfile(userId);
+}
+
+export async function uploadScreenTimeUsage(userId: string, input: { queriedAt: string; rows: Array<{ localDate: string; timezoneId: string; packageName: string; appLabel: string; usageSeconds: number }> }) {
+  const settings = await sql()`SELECT screen_time_sync_enabled AS enabled FROM user_settings WHERE user_id=${userId}::uuid`;
+  if (settings[0]?.enabled !== true) throw new HttpProblem(403, 'SCREEN_TIME_SYNC_CONSENT_REQUIRED');
+  const payload = JSON.stringify(input.rows.map((row) => ({
+    local_date: row.localDate,
+    timezone_id: row.timezoneId,
+    package_name: row.packageName,
+    app_label: row.appLabel,
+    usage_seconds: row.usageSeconds,
+  })));
+  const result = await sql()`
+    WITH consent AS (
+      SELECT user_id FROM user_settings
+      WHERE user_id=${userId}::uuid AND screen_time_sync_enabled=true
+      FOR SHARE
+    ), incoming AS (
+      SELECT local_date::date, timezone_id, package_name, app_label, usage_seconds::integer
+      FROM jsonb_to_recordset(${payload}::jsonb)
+        AS usage(local_date text, timezone_id text, package_name text, app_label text, usage_seconds integer)
+    ), written AS (
+      INSERT INTO user_app_usage_daily (user_id, local_date, timezone_id, package_name, app_label, usage_seconds, queried_at)
+      SELECT consent.user_id, incoming.local_date, incoming.timezone_id, incoming.package_name, incoming.app_label, incoming.usage_seconds, ${input.queriedAt}::timestamptz
+      FROM consent CROSS JOIN incoming
+      ON CONFLICT (user_id, local_date, timezone_id, package_name)
+      DO UPDATE SET app_label=EXCLUDED.app_label, usage_seconds=EXCLUDED.usage_seconds, queried_at=EXCLUDED.queried_at, updated_at=now()
+      RETURNING 1
+    )
+    SELECT count(*)::int AS "uploadedRows" FROM written
+  `;
+  const uploadedRows = Number(result[0]?.uploadedRows ?? 0);
+  if (uploadedRows === 0) throw new HttpProblem(403, 'SCREEN_TIME_SYNC_CONSENT_REQUIRED');
+  return { uploadedRows, queriedAt: input.queriedAt };
+}
+
+export async function getScreenTimeInsights(userId: string, period: 'day' | 'week' | 'month' | 'year', timezone: string) {
+  const settings = await sql()`SELECT screen_time_sync_enabled AS enabled FROM user_settings WHERE user_id=${userId}::uuid`;
+  if (settings[0]?.enabled !== true) throw new HttpProblem(403, 'SCREEN_TIME_SYNC_CONSENT_REQUIRED');
+  const bounds = await sql()`
+    WITH local_bounds AS (
+      SELECT date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone})::date AS start_date,
+        (date_trunc(${period === 'day' ? 'day' : period}, now() AT TIME ZONE ${timezone}) +
+          CASE ${period} WHEN 'day' THEN interval '1 day' WHEN 'week' THEN interval '1 week' WHEN 'month' THEN interval '1 month' ELSE interval '1 year' END)::date AS end_date
+    )
+    SELECT start_date::text AS "startDate", end_date::text AS "endDate" FROM local_bounds
+  `;
+  const startDate = String(bounds[0].startDate);
+  const endDate = String(bounds[0].endDate);
+  const apps = await sql()`
+    SELECT package_name AS "packageName", (array_agg(app_label ORDER BY queried_at DESC))[1] AS "appLabel", sum(usage_seconds)::bigint AS "usageSeconds", max(queried_at) AS "queriedAt"
+    FROM user_app_usage_daily
+    WHERE user_id=${userId}::uuid AND timezone_id=${timezone} AND local_date >= ${startDate}::date AND local_date < ${endDate}::date
+    GROUP BY package_name ORDER BY sum(usage_seconds) DESC
+  `;
+  return {
+    period, timezone, startDate, endDate,
+    totalUsageSeconds: apps.reduce((sum, app) => sum + Number(app.usageSeconds), 0),
+    updatedAt: apps.reduce<string | null>((latest, app) => {
+      const value = app.queriedAt instanceof Date ? app.queriedAt.toISOString() : String(app.queriedAt);
+      return latest === null || value > latest ? value : latest;
+    }, null),
+    apps: apps.map((app) => ({ ...app, usageSeconds: Number(app.usageSeconds) })),
+  };
 }
 
 export async function getActivityInsights(userId: string, period: 'day' | 'week' | 'month' | 'year') {

@@ -145,7 +145,7 @@ Priority: **P0** required for MVP; **P1** desirable for MVP; **Future** post-MVP
 - **P0** Admin-created activity and weekly-plan templates are visible to users only when published. Users copy a template into their own plan; they cannot modify the original global template.
 - **P0** Admin notification campaigns support draft, scheduled, sending, sent, cancelled, and failed states. Respect platform notification permission and user notification preference; never include private review/profile data in a notification.
 - **P0** CRM monitoring includes daily/weekly/monthly/yearly aggregate completed focus time, active users, completed sessions, top performers by completed Dream Force focus time, and Top 10 apps by aggregate Android screen-time contribution.
-- **P0** Top 10 Apps is privacy-bounded: raw Android usage remains on the device by default. Only an explicit, default-off analytics consent contributes a non-identifiable daily aggregate. Admins cannot view a user’s installed-app list, per-user app timeline, review text, or raw UsageStats records.
+- **P0** Android app usage sync is a separate, default-off consent from Terms acceptance and Android Usage Access. With both consents, daily per-app aggregates sync to the user's private account for Screen time Insights. CRM Top 10 uses a separate non-identifiable aggregate; admins cannot view individual app-usage records, review text, or raw UsageStats timelines.
 
 ## 5. User journeys and acceptance criteria
 
@@ -1040,7 +1040,7 @@ Use [WCAG 2.2](https://www.w3.org/TR/WCAG22/) as the accessibility reference for
 
 - Dream Force activity (timer sessions, plans, and daily reviews) remains available on both Android and iOS and continues to use the account sync described in this PRD.
 - This release adds optional tracking of time spent in other apps on Android only. iOS must not show an other-app screen-time dashboard, setting, permission prompt, or substitute tracking method in this release. iOS History continues to show Dream Force activity only.
-- Android tracking is strictly opt-in. Core Dream Force timer, plans, reviews, and history work when the user declines or later revokes Usage access.
+- Android Usage Access and per-account screen-time cloud sync are separate, strictly opt-in choices. Core Dream Force timer, plans, reviews, and history work when a user declines or later revokes either permission or sync consent.
 - Keep Dream Force activity and other-app usage visually distinct in the Android dashboard. Label each source; never combine them into a single “productive time” score.
 
 ### 15.2 Android permission and lifecycle
@@ -1055,7 +1055,7 @@ States and actions:
 4. **No data / unsupported interval:** Explain that Android has no usage data for the selected period yet and allow changing the range. Do not display misleading zeroes as confirmed inactivity.
 5. **Settings unavailable or query error:** Keep Dream Force features usable; show a recoverable error and a retry action.
 
-Use Kotlin `UsageStatsManager.queryEvents` over each local-midnight-to-midnight range and reconstruct foreground duration from `ACTIVITY_RESUMED`/`ACTIVITY_PAUSED` pairs. Do not use `queryUsageStats(INTERVAL_DAILY)` as the raw duration reconstruction source. Treat results as aggregate, OS-provided estimates with possible delay or gaps; do not promise second-by-second accuracy, foreground activity surveillance, or guaranteed coverage for every app/device. The Screen time view includes all app records returned by Android, including Dream Force when Android provides a record for it. Only show app labels/icons that Android can resolve; handle removed/unavailable packages as “App no longer available.”
+Use Android's calendar-aligned `UsageStatsManager.INTERVAL_DAILY` aggregates for per-day summaries, preserving the device's IANA timezone and local date. These are OS-provided estimates and may be delayed or incomplete; do not promise second-by-second accuracy, foreground activity surveillance, or guaranteed coverage for every app/device. Do not upload event timelines. The Screen time view includes all app records returned by Android, including Dream Force when Android provides a record for it. Only show app labels/icons that Android can resolve; handle removed/unavailable packages as “App no longer available.”
 
 ### 15.3 Dashboard requirements
 
@@ -1077,13 +1077,15 @@ For accessibility, duration is available as text, not only chart geometry or col
 
 ### 15.4 Privacy and storage boundary
 
-Other-app usage is sensitive device activity data. Keep package identifiers, app labels/icons, and usage durations on the Android device in app-private storage by default. Do not send them to crash reports, logs, support tooling, lock-screen surfaces, or account exports. A separate, default-off analytics consent may contribute only a daily non-identifiable aggregate `(local_date, pseudonymous app key, optional display label, contributor count, total usage seconds)` to the backend for the CRM Top 10 Apps report. Do not send a user ID, device ID, raw timeline, or installed-app list with this contribution. Avoid storing more granularity than needed for the displayed daily summary.
+Other-app usage is sensitive device activity data. The Android dashboard may work locally without cloud sync. Account sync is default-off and requires a separate, affirmative, versioned consent that names the uploaded fields and purpose. The consent is shown during account creation and can be managed later in Insights. Android Usage Access remains a separate OS permission; neither choice implies the other.
 
-On-device cache can be deleted from the dashboard. Account deletion does not need to delete this cache because it is not account data; the UI must explain the separate device-level clear action. If local app data is cleared or the app is uninstalled, the cache is removed by Android. Access revocation disables new reads and refreshes. Use encrypted app-private storage where supported by the chosen local database configuration, and exclude the cache from cloud/device backup where platform backup rules allow.
+After both choices are enabled, upload only per-local-day app aggregates `(user_id, local_date, IANA timezone, package identifier, available app label, usage seconds, queried_at)` to the signed-in user's private account for cross-device Screen time Insights. Do not upload foreground event timelines, screen contents, notification contents, or an installed-app list. Do not include package names, labels, or per-user usage in logs, crash reports, support tooling, notifications, or lock-screen surfaces. Admins cannot inspect individual usage rows; CRM Top 10 remains a separate anonymous aggregate.
+
+Turning off cloud sync immediately blocks further uploads and deletes that user's uploaded app-usage rows. The consent version, grant time, and revocation time remain as a minimal consent audit. Account export includes the owner's daily usage rows, never a raw timeline; account deletion cascades to all account usage rows. Clearing device history removes only the local cache; explain that this does not delete the account copy, and offer the cloud-sync off/delete action separately. If local app data is cleared or the app is uninstalled, the local cache is removed by Android. Access revocation disables new reads and refreshes. Use encrypted app-private storage where supported and exclude the cache from device backup.
 
 ### 15.5 API contract and local repository
 
-There is no per-user Dream Force backend endpoint for third-party app usage in this release. Do not add raw usage fields to `/me`, session, history, support, or export payloads. The only backend usage-data contract is the separately consented anonymous daily aggregate used by CRM Top 10 Apps. Android client repository contract:
+The per-user cloud endpoint is only available after the user has granted screen-time sync consent. It accepts daily aggregates and never accepts a raw foreground event timeline. It is owner-scoped and returns only the authenticated user's data. The anonymous CRM Top 10 aggregate remains a separate contract and cannot be joined to an individual account. Android client repository contract:
 
 ```text
 GET local://device-usage?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -1094,9 +1096,15 @@ POST local://device-usage/refresh?from=YYYY-MM-DD&to=YYYY-MM-DD
 
 DELETE local://device-usage
   -> 204 No Content
+
+PUT /v1/me/screen-time
+  -> upsert consented local-day app aggregates for the authenticated account
+
+GET /v1/me/screen-time?period=day|week|month|year&timezone=IANA_ZONE
+  -> the authenticated user's app-level summary for that local period
 ```
 
-These are illustrative app-internal operations, not HTTP routes. `DeviceUsageSummary` is derived from the local store and the Android Usage Stats API:
+The `local://` operations are illustrative app-internal operations. `DeviceUsageSummary` is derived from Android Usage Stats API and the local store. HTTP operations require valid Dream Force authentication and persisted consent:
 
 ```json
 {
@@ -1114,11 +1122,11 @@ These are illustrative app-internal operations, not HTTP routes. `DeviceUsageSum
 }
 ```
 
-`data_status` values: `available`, `partial`, `stale`, `no_data`, `permission_required`, `query_error`. The app computes percentages from returned usage and guards the zero-total case. These values must not be serialized into remote API requests.
+`data_status` values: `available`, `partial`, `stale`, `no_data`, `permission_required`, `query_error`. The app computes percentages from returned usage and guards the zero-total case. The remote upload contains only each app's local date, IANA timezone, package identifier, available label, and aggregate usage seconds, plus the query time. It contains no event timeline or device identifier. `data_status` and computed percentages are UI values and are not serialized as usage records.
 
 ### 15.6 Android local database schema
 
-The following Room/SQLite table is local only and is separate from the PostgreSQL schema in §9. Store per-local-day aggregates, not event timelines:
+The following Room/SQLite table is an encrypted device cache and is separate from the PostgreSQL schema in §9. Store per-local-day aggregates, not event timelines:
 
 ```sql
 CREATE TABLE device_app_usage_daily (
@@ -1135,15 +1143,15 @@ CREATE INDEX device_app_usage_date_idx
   ON device_app_usage_daily(local_date, timezone_id);
 ```
 
-Upsert the daily aggregate after successful queries. Retain at least 400 days so the year view can render a full calendar year, including leap years and date-boundary refreshes. Clear rows on the confirmed clear action. Migration and backup policy must preserve the local-only boundary.
+Upsert the daily aggregate after successful queries. Retain at least 400 days so the year view can render a full calendar year, including leap years and date-boundary refreshes. When cloud consent is enabled, sync daily aggregate rows to the user's account. Clear rows on the confirmed device clear action; this does not delete the cloud copy. Migration and backup policy must preserve the encrypted local cache.
 
 ### 15.7 Acceptance criteria and references
 
 - Android users can open app usage from History and opt in through a clear in-app explanation and Android Settings. Returning from Settings re-checks the actual authorization state.
 - Denial/revocation never blocks or degrades Dream Force session tracking. Revocation is reflected before any new app-usage query.
-- Android app usage is sourced from `UsageStatsManager`; raw rows remain device-local. With separate explicit analytics consent, the client may contribute a non-identifiable daily app aggregate for CRM Top 10 reports.
+- Android app usage is sourced from `UsageStatsManager` daily interval aggregates. Upload is disabled until the user separately consents to account sync and Android Usage Access is granted. Uploaded data is per-user and owner-readable only; CRM Top 10 remains a separate anonymous aggregate.
 - iOS contains no other-app usage UI, API integration, or tracking mechanism in this release.
-- Crash, support, and ordinary analytics payloads contain no package names, app labels, or other-app durations. The dedicated opt-in aggregate endpoint accepts only daily aggregate app reporting data without a user/device identifier or raw timeline.
+- Crash, support, and ordinary analytics payloads contain no package names, app labels, or other-app durations. The screen-time endpoint accepts only consented, daily, per-app aggregates for the user's private Insights; it accepts no raw timeline or device identifier.
 - Clear-device-usage removes all local rows after confirmation. Stale and partial data are labeled plainly.
 - [Android `UsageStatsManager`](https://developer.android.com/reference/android/app/usage/UsageStatsManager) documents usage query APIs and the `PACKAGE_USAGE_STATS` access requirement.
 - [Android special permissions](https://developer.android.com/training/permissions/requesting-special) documents the Settings-based grant flow and user-driven request pattern.

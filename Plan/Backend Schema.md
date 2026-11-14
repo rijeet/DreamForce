@@ -4,11 +4,11 @@
 **API runtime:** Vercel Functions / Next.js Route Handlers  
 **Ephemeral store and rate limiting:** Upstash Redis  
 **Async delivery:** Upstash QStash to signed Vercel job routes  
-**Scope:** MVP persistent backend data. Raw Android third-party-app usage stays on-device by default. Only users who explicitly opt in to anonymous analytics contribute daily app-level aggregates for the admin Top 10 report; admins cannot inspect an individual user's installed-app list or usage timeline.
+**Scope:** MVP persistent backend data. Android Usage Access and per-account screen-time sync are separate, default-off opt-ins. With both enabled, daily app-level aggregates are stored in the user's private account for Screen time Insights; no raw timeline is uploaded and admins cannot inspect individual usage rows. CRM Top 10 continues to use separate anonymous aggregates.
 
 ## Authentication flow
 
-1. **User sign up:** A standard user acknowledges Privacy Policy and Terms, then chooses **Continue with Google**. The Flutter app uses Google OpenID Connect Authorization Code with PKCE. The API validates issuer, audience, signature, expiration, and subject. If the Google subject is unknown, it creates `users`, `user_profiles`, and `user_settings` in one transaction with `role = 'user'`.
+1. **User sign up:** A standard user acknowledges the Terms version, may separately opt in to screen-time cloud sync, then chooses **Continue with Google**. The Flutter app uses Google OpenID Connect. The API validates issuer, audience, signature, expiration, and subject. If the Google subject is unknown, it creates `users`, `user_profiles`, and `user_settings` with `role = 'user'`; it records the Terms version and any affirmative screen-time consent. Android Usage Access remains a separate OS permission.
 2. **Login:** Standard users sign in with Google. Admins are created only by a protected bootstrap/provisioning script with email and password; their password is stored exclusively as an Argon2id hash. Both flows create an `auth_sessions` row and return a short-lived access token plus an opaque, rotated refresh token. The mobile app stores tokens only in Android Keystore/iOS Keychain.
 3. **Session / token:** Access token is a signed JWT with `sub = users.id`, issuer, audience, expiry, and a session identifier. API routes require `Authorization: Bearer <access_token>`. Refresh sends the opaque refresh token; the server hashes it, validates the session, rotates it, and revokes the previous token.
 4. **Logout and password reset:** Logout revokes the current `auth_sessions` record and deletes local secure tokens. Standard users recover access through Google. Admin password reset is an operator-only, audited provisioning-script action; no public admin-registration or password-reset endpoint exists. “Sign out of all devices” revokes all active sessions for the user.
@@ -85,8 +85,16 @@ Constraints: `role` is `user` or `admin`; `google_subject` is unique; a `user` r
 | haptics_enabled | boolean | Timer haptic preference |
 | live_activity_enabled | boolean | iOS preference where supported |
 | analytics_app_usage_opt_in | boolean | Default false; permits anonymous app-level aggregate contribution only |
+| screen_time_sync_enabled | boolean | Default false; allows owner-private daily app usage sync after explicit consent |
+| screen_time_consent_version | varchar(64) | Version of screen-time disclosure accepted; retained as consent audit after revocation |
+| screen_time_consent_at | timestamptz | Last affirmative account-sync consent time |
+| screen_time_sync_revoked_at | timestamptz | Last time sync was revoked; uploaded rows are deleted on revocation |
+| terms_accepted_version | varchar(64) | Terms version accepted by the user |
+| terms_accepted_at | timestamptz | Terms acceptance time |
 | week_starts_on | smallint | 1–7, Monday default |
 | updated_at | timestamptz | Last change time |
+
+Constraint: enabling `screen_time_sync_enabled` requires a non-null screen-time consent version and grant time. Revocation disables future writes and deletes the owner's `user_app_usage_daily` rows.
 
 ### activity_templates
 
@@ -346,6 +354,24 @@ Primary key: `(user_id, local_date)`. Admin CRM may show this only as aggregate 
 
 Primary key: `(local_date, app_key)`. This table powers Top 10 apps by day/week/month/year. It cannot be joined to a user or used for individual monitoring.
 
+### user_app_usage_daily
+
+Stores consented, account-owned Android screen-time summaries. It contains per-day aggregates only; no foreground event timeline is accepted.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| user_id | uuid | FK to `users.id`; owner scope |
+| local_date | date | Day in the recorded device timezone |
+| timezone_id | varchar(64) | Valid IANA timezone for the local date |
+| package_name | varchar(255) | Android app identifier; sensitive user data |
+| app_label | varchar(160) | Display label available on the device |
+| usage_seconds | integer | Non-negative per-app daily duration |
+| queried_at | timestamptz | Device summary query time |
+| uploaded_at | timestamptz | First persisted upload time |
+| updated_at | timestamptz | Last upsert time |
+
+Primary key: `(user_id, local_date, timezone_id, package_name)`. Owner-only read/write. Consent revocation deletes all rows for that user; account deletion cascades.
+
 ### idempotency_records
 
 | Column | Type | Notes |
@@ -412,6 +438,7 @@ Primary key: `(user_id, endpoint_key, idempotency_key)`.
 - `weekly_plan_entries` 1 → many `plan_occurrences`
 - `users` 1 → many `plan_occurrences`
 - `users` 1 → many `focus_sessions`
+- `users` 1 → many `user_app_usage_daily` records when screen-time sync is consented
 - `focus_sessions` 1 → many immutable `session_phases`
 - `focus_sessions` 1 → many `session_events`
 - `users` 1 → many `daily_reviews`, `idempotency_records`, `account_export_jobs`, and `account_deletion_requests`
@@ -436,9 +463,10 @@ Primary key: `(user_id, endpoint_key, idempotency_key)`.
 | weekly_plan_templates / template entries | Published templates readable by users; all templates readable by admins | Admin only; user copies a published template into own weekly plan |
 | user_activity_daily | Owner may read own derived summary; admins read aggregate CRM queries only | Backend aggregation service only |
 | app_usage_aggregate_daily | Admin aggregate reports only | Backend aggregation service only after explicit user opt-in |
+| user_app_usage_daily | Owner only; never shown to admins or support | Authenticated owner may upsert only while screen-time consent is enabled; backend deletes on revocation |
 | support_access_audit | Security/admin service only | Backend service only |
 
-Every SQL query for a user-owned table includes the authenticated `user_id`. Never authorize by accepting a client-supplied owner ID. Admin authorization requires `role = 'admin'` in the verified session and does not bypass private-review, raw app-usage, or profile-data restrictions.
+Every SQL query for a user-owned table includes the authenticated `user_id`. Never authorize by accepting a client-supplied owner ID. Admin authorization requires `role = 'admin'` in the verified session and does not bypass private-review, per-user app-usage, or profile-data restrictions.
 
 ## Upstash Redis keys
 
