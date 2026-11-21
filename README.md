@@ -51,6 +51,8 @@ npm run build
 
 ## Run the Android app
 
+The app defaults to the deployed API at `https://dream-force-backend.vercel.app`, so a local backend is not required for ordinary device use. `API_BASE_URL` can override it for local development.
+
 ```powershell
 Set-Location "D:\Mobile Apps\Dream Force\apps\mobile"
 flutter pub get
@@ -58,6 +60,14 @@ flutter analyze
 flutter test
 flutter run
 ```
+
+To explicitly select the deployed backend when launching:
+
+```powershell
+flutter run --dart-define=API_BASE_URL=https://dream-force-backend.vercel.app
+```
+
+For a local API on the same Wi-Fi network, replace the URL with the computer's LAN IP and API port (for example `http://192.168.0.102:3000`). Do not use `127.0.0.1` on a physical Android phone; it refers to the phone itself.
 
 ## Admin provisioning
 

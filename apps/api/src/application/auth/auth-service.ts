@@ -3,6 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import { SignJWT, createRemoteJWKSet, jwtVerify } from 'jose';
 
+import { finalizeDueAccountDeletion } from '../account/account-deletion';
 import { createDatabaseClient } from '../../infrastructure/database/neon';
 import { readServerEnvironment } from '../../infrastructure/env';
 
@@ -25,8 +26,9 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-function refreshTokenHash(token: string) {
-  return createHash('sha256').update(token).digest();
+function refreshTokenHashHex(token: string) {
+  // Hex is decoded in SQL. Neon's HTTP driver does not round-trip a Node Buffer into bytea reliably.
+  return createHash('sha256').update(token).digest('hex');
 }
 
 function secretKey() {
@@ -54,7 +56,7 @@ async function issueSession(user: AuthUser): Promise<SessionTokens> {
 
   await sql`
     INSERT INTO auth_sessions (id, user_id, refresh_token_hash, expires_at)
-    VALUES (${sessionId}::uuid, ${user.id}::uuid, ${refreshTokenHash(refreshToken)}, ${expiresAt})
+    VALUES (${sessionId}::uuid, ${user.id}::uuid, decode(${refreshTokenHashHex(refreshToken)}, 'hex'), ${expiresAt})
   `;
 
   return {
@@ -96,6 +98,7 @@ export async function exchangeGoogleAuthorizationCode(input: {
 
 /** Verifies a native Android Google ID token before issuing Dream Force tokens. */
 export async function signInWithGoogleIdToken(idToken: string, preferences: { timezone?: string; termsAcceptedVersion: string; screenTimeConsentVersion?: string }): Promise<SessionTokens> {
+  // Country and time zone are fixed for every account. preferences.timezone is ignored.
   const environment = readServerEnvironment();
   const jwks = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
   let verified;
@@ -125,7 +128,8 @@ export async function signInWithGoogleIdToken(idToken: string, preferences: { ti
     email,
     displayName: typeof verified.payload.name === 'string' ? verified.payload.name : null,
     avatarUrl: typeof verified.payload.picture === 'string' ? verified.payload.picture : null,
-    ...preferences,
+    termsAcceptedVersion: preferences.termsAcceptedVersion,
+    screenTimeConsentVersion: preferences.screenTimeConsentVersion,
   });
   return issueSession(user);
 }
@@ -135,7 +139,6 @@ async function findOrCreateGoogleUser(identity: {
   email: string;
   displayName: string | null;
   avatarUrl: string | null;
-  timezone?: string;
   termsAcceptedVersion: string;
   screenTimeConsentVersion?: string;
 }): Promise<AuthUser> {
@@ -143,12 +146,8 @@ async function findOrCreateGoogleUser(identity: {
   const existing = (await sql`
     SELECT id, email, role, status FROM users WHERE google_subject = ${identity.subject} LIMIT 1
   `) as AuthUser[];
-  if (existing[0]) {
-    // UTC is the schema fallback, so upgrade legacy profiles from the device's
-    // IANA zone on sign-in. A user-selected non-UTC profile zone remains intact.
-    if (identity.timezone) {
-      await sql`UPDATE user_profiles SET timezone=${identity.timezone} WHERE user_id=${existing[0].id}::uuid AND timezone='UTC'`;
-    }
+  if (existing[0] && !(await finalizeDueAccountDeletion(existing[0].id))) {
+    await pinFixedProfile(existing[0].id);
     await saveGoogleConsent(existing[0].id, identity);
     return assertActive(existing[0]);
   }
@@ -161,8 +160,8 @@ async function findOrCreateGoogleUser(identity: {
       ON CONFLICT (google_subject) DO NOTHING
       RETURNING id, email, role, status
     ), new_profile AS (
-      INSERT INTO user_profiles (user_id, timezone)
-      SELECT id, ${identity.timezone ?? 'UTC'} FROM new_user
+      INSERT INTO user_profiles (user_id, country, timezone)
+      SELECT id, 'Bangladesh', 'Asia/Dhaka' FROM new_user
     ), new_settings AS (
       INSERT INTO user_settings (user_id)
       SELECT id FROM new_user
@@ -178,8 +177,20 @@ async function findOrCreateGoogleUser(identity: {
     SELECT id, email, role, status FROM users WHERE google_subject = ${identity.subject} LIMIT 1
   `) as AuthUser[];
   if (!raced[0]) throw new Error('Google user creation did not return a user');
+  if (await finalizeDueAccountDeletion(raced[0].id)) {
+    return findOrCreateGoogleUser(identity);
+  }
+  await pinFixedProfile(raced[0].id);
   await saveGoogleConsent(raced[0].id, identity);
   return assertActive(raced[0]);
+}
+
+async function pinFixedProfile(userId: string) {
+  await createDatabaseClient()`
+    UPDATE user_profiles
+    SET country = 'Bangladesh', timezone = 'Asia/Dhaka'
+    WHERE user_id = ${userId}::uuid
+  `;
 }
 
 async function saveGoogleConsent(userId: string, identity: { termsAcceptedVersion: string; screenTimeConsentVersion?: string }) {
@@ -217,12 +228,13 @@ export async function rotateRefreshToken(refreshToken: string): Promise<SessionT
     SELECT sessions.id AS session_id, users.id, users.email, users.role, users.status
     FROM auth_sessions AS sessions
     JOIN users ON users.id = sessions.user_id
-    WHERE sessions.refresh_token_hash = ${refreshTokenHash(refreshToken)}
+    WHERE sessions.refresh_token_hash = decode(${refreshTokenHashHex(refreshToken)}, 'hex')
       AND sessions.revoked_at IS NULL AND sessions.expires_at > now()
     LIMIT 1
   `) as (AuthUser & { session_id: string })[];
   const current = rows[0];
   if (!current) throw new AuthenticationError('REFRESH_TOKEN_INVALID');
+  if (await finalizeDueAccountDeletion(current.id)) throw new AuthenticationError('ACCOUNT_UNAVAILABLE');
   const replacementId = randomUUID();
   const nextRefreshToken = randomBytes(48).toString('base64url');
   const expiresAt = new Date(Date.now() + environment.JWT_REFRESH_TOKEN_TTL_DAYS * 86400 * 1000);
@@ -234,7 +246,7 @@ export async function rotateRefreshToken(refreshToken: string): Promise<SessionT
       RETURNING user_id
     ), replacement AS (
       INSERT INTO auth_sessions (id, user_id, refresh_token_hash, expires_at)
-      SELECT ${replacementId}::uuid, user_id, ${refreshTokenHash(nextRefreshToken)}, ${expiresAt}
+      SELECT ${replacementId}::uuid, user_id, decode(${refreshTokenHashHex(nextRefreshToken)}, 'hex'), ${expiresAt}
       FROM revoked
       RETURNING id
     ), linked AS (
@@ -255,7 +267,7 @@ export async function revokeRefreshToken(refreshToken: string) {
   const sql = createDatabaseClient();
   await sql`
     UPDATE auth_sessions SET revoked_at = now()
-    WHERE refresh_token_hash = ${refreshTokenHash(refreshToken)} AND revoked_at IS NULL
+    WHERE refresh_token_hash = decode(${refreshTokenHashHex(refreshToken)}, 'hex') AND revoked_at IS NULL
   `;
 }
 
@@ -298,7 +310,9 @@ export async function provisionAdmin(email: string, password: string) {
 }
 
 function assertActive(user: AuthUser): AuthUser {
-  if (user.status !== 'active') throw new AuthenticationError('ACCOUNT_UNAVAILABLE');
+  if (user.status !== 'active' && user.status !== 'deletion_pending') {
+    throw new AuthenticationError('ACCOUNT_UNAVAILABLE');
+  }
   return user;
 }
 

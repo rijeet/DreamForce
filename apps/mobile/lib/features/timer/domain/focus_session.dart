@@ -76,6 +76,15 @@ class FocusSession extends ChangeNotifier {
               : _phaseEndsAt.difference(DateTime.now()))
           .inSeconds
           .clamp(0, 999999);
+  int get phaseSeconds => phaseIndex >= 0 && phaseIndex < _phases.length
+      ? _phases[phaseIndex].seconds
+      : 0;
+  int get elapsedSeconds {
+    final total = phaseSeconds;
+    if (total == 0) return 0;
+    return (total - remainingSeconds).clamp(0, total);
+  }
+
   double get progress => status == SessionStatus.completed
       ? 1
       : 1 - remainingSeconds / _phases[phaseIndex].seconds;

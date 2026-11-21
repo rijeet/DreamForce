@@ -2,6 +2,10 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import type { z } from 'zod';
 
+import {
+  fixedProfileCountry,
+  fixedProfileTimezone,
+} from '@dream-force/api-contract';
 import type {
   activityTemplateSchema,
   createSessionSchema,
@@ -14,6 +18,8 @@ import type {
   weeklyPlanSchema,
 } from '@dream-force/api-contract';
 
+import { finalizeDueAccountDeletion } from '../account/account-deletion';
+import { invalidatePlanDayCache, readCachedPlanDay, writeCachedPlanDay } from '../../infrastructure/cache/plan-day-cache';
 import { createDatabaseClient } from '../../infrastructure/database/neon';
 import { HttpProblem } from '../../interfaces/http/auth';
 
@@ -33,7 +39,8 @@ function notFound(code: string): never { throw new HttpProblem(404, code); }
 function stale(): never { throw new HttpProblem(412, 'VERSION_STALE'); }
 
 export async function getProfile(userId: string) {
-  const rows = await sql()`SELECT u.id, u.email, u.display_name AS "displayName", u.avatar_url AS "avatarUrl", u.locale,
+  if (await finalizeDueAccountDeletion(userId)) throw new HttpProblem(401, 'ACCOUNT_DELETED');
+  const rows = await sql()`SELECT u.id, u.email, u.display_name AS "displayName", u.avatar_url AS "avatarUrl", u.locale, u.status AS "accountStatus", u.deletion_due_at AS "deletionDueAt",
     p.gender, p.date_of_birth AS "dateOfBirth", p.country, p.city, p.profession, p.timezone,
     s.theme_preference AS "themePreference", s.phase_notifications_enabled AS "phaseNotificationsEnabled",
     s.sound_enabled AS "soundEnabled", s.haptics_enabled AS "hapticsEnabled", s.analytics_app_usage_opt_in AS "analyticsAppUsageOptIn", s.week_starts_on AS "weekStartsOn",
@@ -49,12 +56,12 @@ export async function updateProfile(userId: string, input: ProfileInput) {
     displayName: input.displayName ?? current.displayName,
     avatarUrl: input.avatarUrl ?? current.avatarUrl,
     locale: input.locale ?? current.locale,
-    gender: input.gender ?? current.gender,
-    dateOfBirth: input.dateOfBirth ?? current.dateOfBirth,
-    country: input.country ?? current.country,
-    city: input.city ?? current.city,
-    profession: input.profession ?? current.profession,
-    timezone: input.timezone ?? current.timezone,
+    gender: input.gender === undefined ? current.gender : input.gender,
+    dateOfBirth: input.dateOfBirth === undefined ? current.dateOfBirth : input.dateOfBirth,
+    country: fixedProfileCountry,
+    city: input.city === undefined ? current.city : input.city,
+    profession: input.profession === undefined ? current.profession : input.profession,
+    timezone: fixedProfileTimezone,
   };
   await sql()`UPDATE users SET display_name=${profile.displayName}, avatar_url=${profile.avatarUrl}, locale=${profile.locale} WHERE id=${userId}::uuid`;
   await sql()`UPDATE user_profiles SET gender=${profile.gender}, date_of_birth=${profile.dateOfBirth}, country=${profile.country}, city=${profile.city}, profession=${profile.profession}, timezone=${profile.timezone} WHERE user_id=${userId}::uuid`;
@@ -237,6 +244,7 @@ export async function listActivities(userId: string) {
 
 export async function createActivity(userId: string, input: ActivityInput) {
   const rows = await sql()`INSERT INTO activity_templates (owner_user_id, name, icon_key, category, planned_minutes) VALUES (${userId}::uuid, ${input.name}, ${input.iconKey}, ${input.category ?? null}, ${input.plannedMinutes}) RETURNING id, name, icon_key AS "iconKey", category, planned_minutes AS "plannedMinutes", version`;
+  await invalidatePlanDayCache(userId);
   return rows[0];
 }
 
@@ -247,12 +255,14 @@ export async function patchActivity(userId: string, id: string, input: ActivityP
   if (Number(current.version) !== input.version) stale();
   const changed = await sql()`UPDATE activity_templates SET name=${input.name ?? current.name as string}, icon_key=${input.iconKey ?? current.icon_key as string}, category=${input.category ?? current.category as string | null}, planned_minutes=${input.plannedMinutes ?? Number(current.planned_minutes)}, version=version+1 WHERE id=${id}::uuid AND owner_user_id=${userId}::uuid AND version=${input.version} RETURNING id, name, icon_key AS "iconKey", category, planned_minutes AS "plannedMinutes", version`;
   if (!changed[0]) stale();
+  await invalidatePlanDayCache(userId);
   return changed[0];
 }
 
 export async function archiveActivity(userId: string, id: string) {
   const rows = await sql()`UPDATE activity_templates SET archived_at=now(), version=version+1 WHERE id=${id}::uuid AND owner_user_id=${userId}::uuid AND archived_at IS NULL RETURNING id`;
   if (!rows[0]) notFound('ACTIVITY_NOT_FOUND');
+  await invalidatePlanDayCache(userId);
 }
 
 function schedule(totalMinutes: number) {
@@ -287,6 +297,7 @@ export async function createFocusSession(userId: string, input: SessionInput) {
     const session = rows[0] as Record<string, unknown>;
     await Promise.all(phases.map((phase, position) => sql()`INSERT INTO session_phases (session_id, position, phase_type, planned_seconds, started_at) VALUES (${session.id as string}::uuid, ${position}, ${phase.type}, ${phase.seconds}, ${position === 0 ? now : null})`));
     await sql()`INSERT INTO session_events (session_id, user_id, client_event_id, event_type, occurred_at) VALUES (${session.id as string}::uuid, ${userId}::uuid, ${randomUUID()}::uuid, 'started', ${now})`;
+    if (input.planOccurrenceId) await invalidatePlanDayCache(userId);
     return getFocusSession(userId, session.id as string);
   } catch (error) {
     if (String(error).includes('focus_sessions_one_open_per_user_idx')) conflict('OPEN_SESSION_EXISTS');
@@ -329,6 +340,7 @@ async function advanceDueSession(userId: string, id: string) {
       const completed = await sql()`UPDATE focus_sessions SET status='completed', current_phase='finished', phase_target_end_at=null, phase_started_at=null, ended_at=${phaseEnd}, actual_focus_seconds=(SELECT COALESCE(sum(actual_seconds),0) FROM session_phases WHERE session_id=${id}::uuid AND phase_type='focus'), actual_rest_seconds=(SELECT COALESCE(sum(actual_seconds),0) FROM session_phases WHERE session_id=${id}::uuid AND phase_type='rest'), version=version+1 WHERE id=${id}::uuid AND user_id=${userId}::uuid AND status='running' AND current_phase_index=${index} AND phase_target_end_at=${session.phase_target_end_at as Date} AND phase_target_end_at <= now() RETURNING id`;
       if (!completed[0]) continue;
       await sql()`INSERT INTO session_events (session_id, user_id, client_event_id, event_type, occurred_at) VALUES (${id}::uuid, ${userId}::uuid, ${randomUUID()}::uuid, 'completed', ${phaseEnd})`;
+      if (session.plan_occurrence_id) await invalidatePlanDayCache(userId);
       return;
     }
     const nextType = next.phase_type as string;
@@ -361,6 +373,7 @@ export async function submitSessionEvent(userId: string, id: string, input: Sess
     await sql()`UPDATE focus_sessions SET status='cancelled', current_phase='finished', paused_at=null, phase_target_end_at=null, phase_started_at=null, ended_at=${now}, version=version+1 WHERE id=${id}::uuid AND version=${input.expectedVersion}`;
   }
   await sql()`INSERT INTO session_events (session_id, user_id, client_event_id, event_type, occurred_at) VALUES (${id}::uuid, ${userId}::uuid, ${input.clientEventId}::uuid, ${input.eventType === 'cancel' ? 'cancel' : input.eventType}, ${now})`;
+  if (input.eventType === 'cancel' && session.plan_occurrence_id) await invalidatePlanDayCache(userId);
   return getFocusSession(userId, id);
 }
 
@@ -395,6 +408,7 @@ export async function createPlan(userId: string, input: PlanInput) {
     SELECT id FROM created
   `;
   if (!rows[0]) throw new HttpProblem(400, 'PLAN_ACTIVITY_NOT_AVAILABLE');
+  await invalidatePlanDayCache(userId);
   return getPlan(userId, rows[0].id as string);
 }
 
@@ -446,6 +460,7 @@ export async function updatePlan(userId: string, id: string, input: UpdatePlanIn
     if (Number(allowed[0]?.count) !== input.entries.length) throw new HttpProblem(400, 'PLAN_ACTIVITY_NOT_AVAILABLE');
     stale();
   }
+  await invalidatePlanDayCache(userId);
   return getPlan(userId, id);
 }
 
@@ -491,11 +506,130 @@ export async function listPlanOccurrences(userId: string, localDate: string) {
   `;
 }
 
+function jsonRecord(value: unknown) {
+  const parsed = typeof value === 'string' ? JSON.parse(value) as unknown : value;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  return parsed as Record<string, unknown>;
+}
+
+function jsonList(value: unknown) {
+  const parsed = typeof value === 'string' ? JSON.parse(value) as unknown : value;
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+async function queryCurrentPlanDay(userId: string, localDate: string) {
+  const rows = await sql()`
+    WITH active AS (
+      SELECT id, name, timezone, is_active AS "isActive", version
+      FROM weekly_plans
+      WHERE user_id=${userId}::uuid AND is_active
+      ORDER BY updated_at DESC
+      LIMIT 1
+    ), inserted AS (
+      INSERT INTO plan_occurrences (
+        user_id, plan_id, plan_entry_id, template_id, local_date, timezone,
+        local_start_time, planned_minutes, name_snapshot, icon_key_snapshot
+      )
+      SELECT ${userId}::uuid, p.id, e.id, a.id, ${localDate}::date, p.timezone,
+        e.local_start_time, COALESCE(e.planned_minutes_override, a.planned_minutes), a.name, a.icon_key
+      FROM active p
+      JOIN weekly_plan_entries e ON e.plan_id=p.id
+      JOIN activity_templates a ON a.id=e.template_id
+      WHERE e.weekday=EXTRACT(ISODOW FROM ${localDate}::date)::smallint
+        AND (a.owner_user_id=${userId}::uuid OR a.is_builtin=true)
+      ON CONFLICT (plan_entry_id, local_date) WHERE plan_entry_id IS NOT NULL DO NOTHING
+      RETURNING id, local_date, timezone, local_start_time, planned_minutes,
+        name_snapshot, icon_key_snapshot, state, template_id, created_at
+    ), occurrence_rows AS (
+      SELECT o.id, o.local_date, o.timezone, o.local_start_time, o.planned_minutes,
+        o.name_snapshot, o.icon_key_snapshot, o.state, o.template_id, o.created_at,
+        CASE WHEN s.status='completed' THEN 'completed'
+             WHEN s.status IN ('running','paused') THEN 'started'
+             WHEN s.status='cancelled' THEN 'unstarted'
+             ELSE o.state END AS display_state,
+        a.category
+      FROM plan_occurrences o
+      LEFT JOIN activity_templates a ON a.id=o.template_id
+      LEFT JOIN LATERAL (
+        SELECT status FROM focus_sessions
+        WHERE plan_occurrence_id=o.id AND user_id=${userId}::uuid
+        ORDER BY created_at DESC LIMIT 1
+      ) s ON true
+      WHERE o.user_id=${userId}::uuid AND o.local_date=${localDate}::date
+        AND NOT EXISTS (SELECT 1 FROM inserted i WHERE i.id=o.id)
+      UNION ALL
+      SELECT i.id, i.local_date, i.timezone, i.local_start_time, i.planned_minutes,
+        i.name_snapshot, i.icon_key_snapshot, i.state, i.template_id, i.created_at,
+        i.state::text AS display_state, a.category
+      FROM inserted i
+      LEFT JOIN activity_templates a ON a.id=i.template_id
+    )
+    SELECT
+      (SELECT row_to_json(active_row) FROM active active_row) AS plan,
+      COALESCE((
+        SELECT json_agg(json_build_object(
+          'id', e.id,
+          'templateId', e.template_id,
+          'weekday', e.weekday,
+          'position', e.position,
+          'localStartTime', CASE WHEN e.local_start_time IS NULL THEN NULL ELSE to_char(e.local_start_time, 'HH24:MI:SS') END,
+          'plannedMinutesOverride', e.planned_minutes_override
+        ) ORDER BY e.weekday, e.position)
+        FROM weekly_plan_entries e
+        JOIN active p ON p.id=e.plan_id
+      ), '[]'::json) AS entries,
+      COALESCE((
+        SELECT json_agg(json_build_object(
+          'id', t.id,
+          'name', t.name,
+          'iconKey', t.icon_key,
+          'category', t.category,
+          'plannedMinutes', t.planned_minutes,
+          'isBuiltin', t.is_builtin
+        ) ORDER BY t.is_builtin DESC, t.updated_at DESC)
+        FROM activity_templates t
+        WHERE t.archived_at IS NULL AND (t.owner_user_id=${userId}::uuid OR t.is_builtin=true)
+      ), '[]'::json) AS templates,
+      COALESCE((
+        SELECT json_agg(json_build_object(
+          'id', o.id,
+          'localDate', o.local_date::text,
+          'timezone', o.timezone,
+          'localStartTime', CASE WHEN o.local_start_time IS NULL THEN NULL ELSE to_char(o.local_start_time, 'HH24:MI:SS') END,
+          'plannedMinutes', o.planned_minutes,
+          'name', o.name_snapshot,
+          'iconKey', o.icon_key_snapshot,
+          'state', o.state,
+          'displayState', o.display_state,
+          'templateId', o.template_id,
+          'category', o.category
+        ) ORDER BY o.local_start_time NULLS LAST, o.created_at)
+        FROM occurrence_rows o
+      ), '[]'::json) AS occurrences
+  `;
+  const row = (rows[0] ?? {}) as Record<string, unknown>;
+  const plan = jsonRecord(row.plan);
+  return {
+    plan: plan ? { ...plan, entries: jsonList(row.entries) } : null,
+    templates: jsonList(row.templates),
+    occurrences: jsonList(row.occurrences),
+  };
+}
+
+export async function getCurrentPlanDay(userId: string, localDate: string) {
+  const cached = await readCachedPlanDay(userId, localDate);
+  if (cached) return cached;
+  const fresh = await queryCurrentPlanDay(userId, localDate);
+  await writeCachedPlanDay(userId, localDate, fresh);
+  return fresh;
+}
+
 export async function skipPlanOccurrence(userId: string, id: string) {
   const rows = await sql()`UPDATE plan_occurrences SET state='skipped'
     WHERE id=${id}::uuid AND user_id=${userId}::uuid AND state IN ('scheduled','unstarted')
     RETURNING id`;
   if (!rows[0]) notFound('PLAN_OCCURRENCE_NOT_FOUND_OR_STARTED');
+  await invalidatePlanDayCache(userId);
 }
 
 export async function getDailyReview(userId: string, localDate: string) {

@@ -10,7 +10,9 @@ import 'package:material_ui/material_ui.dart';
 enum _Period { day, week, month, year }
 
 class InsightsScreen extends StatefulWidget {
-  const InsightsScreen({super.key});
+  const InsightsScreen({this.active = true, super.key});
+
+  final bool active;
 
   @override
   State<InsightsScreen> createState() => _InsightsScreenState();
@@ -20,7 +22,8 @@ class _InsightsScreenState extends State<InsightsScreen>
     with WidgetsBindingObserver {
   final _api = const DreamForceAuthApi();
   var _screen = 0;
-  var _period = _Period.week;
+  var _period = _Period.day;
+  var _started = false;
   var _heatmapYear = DateTime.now().year;
   var _heatmapEarliestYear = 2019;
   String _selectedHeatmapDate = _localDate(DateTime.now());
@@ -38,7 +41,22 @@ class _InsightsScreenState extends State<InsightsScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _load();
+    _ensureStarted();
+  }
+
+  @override
+  void didUpdateWidget(InsightsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!widget.active || oldWidget.active || _started) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _ensureStarted();
+    });
+  }
+
+  void _ensureStarted() {
+    if (_started || !widget.active) return;
+    _started = true;
+    unawaited(_load());
   }
 
   @override

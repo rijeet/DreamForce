@@ -2,6 +2,7 @@ package com.dreamforce.dream_force
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import android.app.AppOpsManager
 import android.app.usage.UsageStatsManager
 import android.graphics.Bitmap
@@ -27,9 +28,39 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private val appInfoExecutor = Executors.newFixedThreadPool(2)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var notificationPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        SessionBridge.messenger = flutterEngine.dartExecutor.binaryMessenger
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SessionBridge.CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "hasNotificationPermission" -> result.success(SessionNotifications.canPost(this))
+                "requestNotificationPermission" -> requestNotificationPermission(result)
+                "update" -> {
+                    updateSession(call.arguments)
+                    result.success(null)
+                }
+                "hide" -> {
+                    stopService(Intent(this, SessionForegroundService::class.java))
+                    result.success(null)
+                }
+        "alert" -> {
+                    val args = call.arguments as? Map<*, *>
+                    SessionNotifications.alert(
+                        this,
+                        args?.get("title") as? String ?: "Session finished",
+                        args?.get("body") as? String ?: "Your session is complete.",
+                    )
+                    result.success(null)
+                }
+                "schedulePlanReminders" -> {
+                    PlanReminders.schedule(this, planReminders(call.arguments))
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dream_force/device_settings").setMethodCallHandler { call, result ->
             when (call.method) {
                 "openUsageAccessSettings" -> { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)); result.success(null) }
@@ -177,7 +208,79 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != 4101) return
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        notificationPermissionResult?.success(granted)
+        notificationPermissionResult = null
+    }
+
+    private fun requestNotificationPermission(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < 33 || SessionNotifications.canPost(this)) {
+            result.success(true)
+            return
+        }
+        notificationPermissionResult?.success(false)
+        notificationPermissionResult = result
+        requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 4101)
+    }
+
+    private fun updateSession(arguments: Any?) {
+        if (!SessionNotifications.canPost(this)) return
+        val args = arguments as? Map<*, *>
+        val intent = Intent(this, SessionForegroundService::class.java).apply {
+            action = SessionForegroundService.ACTION_UPDATE
+            putExtra(
+                SessionForegroundService.EXTRA_TITLE,
+                args?.get("title") as? String ?: "Focus session",
+            )
+            putExtra(
+                SessionForegroundService.EXTRA_SUBTITLE,
+                args?.get("subtitle") as? String ?: "Focus",
+            )
+            putExtra(SessionForegroundService.EXTRA_POSITION_MS, longArg(args?.get("positionMs")))
+            putExtra(SessionForegroundService.EXTRA_DURATION_MS, longArg(args?.get("durationMs")))
+            putExtra(SessionForegroundService.EXTRA_PLAYING, args?.get("playing") as? Boolean ?: true)
+        }
+        try {
+            ContextCompat.startForegroundService(this, intent)
+        } catch (_: Exception) {
+            // Permission or background limits must leave the in-app timer running.
+        }
+    }
+
+    private fun longArg(value: Any?): Long = when (value) {
+        is Int -> value.toLong()
+        is Long -> value
+        is Double -> value.toLong()
+        else -> 0L
+    }
+
+    private fun planReminders(arguments: Any?): List<PlanReminders.Reminder> {
+        val raw = (arguments as? Map<*, *>)?.get("reminders") as? List<*> ?: return emptyList()
+        return raw.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            val id = map["id"] as? String ?: return@mapNotNull null
+            if (id.isBlank()) return@mapNotNull null
+            PlanReminders.Reminder(
+                id = id,
+                title = (map["title"] as? String ?: "Planned activity").take(80),
+                atMillis = longArg(map["atMillis"]),
+            )
+        }
+    }
+
     override fun onDestroy() {
+        if (isFinishing) {
+            SessionBridge.messenger = null
+            stopService(Intent(this, SessionForegroundService::class.java))
+        }
         appInfoExecutor.shutdownNow()
         super.onDestroy()
     }
