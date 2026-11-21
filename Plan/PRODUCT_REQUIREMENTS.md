@@ -85,8 +85,8 @@ Priority: **P0** required for MVP; **P1** desirable for MVP; **Future** post-MVP
 - **P0** Backend maps a verified identity `(issuer, subject)` to an internal random UUID. Email is a contact/account attribute, not the primary database key.
 - **P0** Store a normalized email address for account recovery and customer support. Encrypt it at rest through managed database/storage encryption; restrict support access by role, require a support reason, and audit access. Never put email, tokens, or journal content in ordinary application logs.
 - **P0** Store the user’s preferred display name and avatar URL or provider reference only if needed. Do not download or persist a profile image unnecessarily; allow the user to remove/change display details.
-- **P0** Allow timezone and locale to be set or inferred from device settings, with an editable setting.
-- **P0** The editable user profile stores optional gender, date of birth, country, city, profession, and timezone. These fields are private to the account owner, excluded from analytics/support by default, and absent from lock-screen/notification content. Date of birth and gender are never required to create an account.
+- **P0** The account time zone is fixed to `Asia/Dhaka` and is read-only. Locale remains a user setting. Screen-time records keep the device IANA zone Android used for that local date.
+- **P0** The editable user profile stores optional gender (Male or Female), date of birth, city (one of Bangladesh’s 64 districts), and profession (Student, Job Holder, Job Seeker, Business Owner, Self-Employed, or Other). Country is Bangladesh and the time zone is `Asia/Dhaka` for every account; both are read-only. These fields are private to the account owner, excluded from analytics/support by default, and absent from lock-screen/notification content. Date of birth and gender are never required to create an account.
 - **P0** Account export and account deletion must be available from settings. Deletion must remove or anonymize personal data in a documented, time-bounded process, except legally required records. Confirm deletion in-app before the final irreversible step.
 - **Decision needed:** The source chat says gender and date of birth are required but gives no product reason. They are excluded from MVP account creation. If a lawful age restriction or a validated product need exists, collect only the minimum needed, document purpose/retention, and allow correction. Gender is not needed for focus planning and should remain uncollected unless a specific feature justifies it.
 
@@ -880,7 +880,7 @@ The active session is not a fifth tab. When a session is running and the user le
 
 **Purpose:** Explain the value, authenticate, collect only the profile details required to personalize the app, and set local preferences.
 
-**Layout:** Brand mark/title and one-sentence benefit at top; primary sign-in method(s) as large buttons; short privacy summary and links to terms/privacy; secondary “Already have an account? Sign in” only when relevant. After successful sign-in, a short setup page asks for display name (pre-filled only when a verified identity provides one) and timezone/locale. Do not ask for gender or date of birth in MVP.
+**Layout:** Brand mark/title and one-sentence benefit at top; primary sign-in method(s) as large buttons; short privacy summary and links to terms/privacy; secondary “Already have an account? Sign in” only when relevant. After a successful sign-in, later launches restore the saved session without asking for Google again. Do not ask for gender or date of birth during account creation. Country and time zone are fixed.
 
 **Actions:** Sign in, continue setup, change timezone/locale, open privacy notice. Authentication is handled by the identity provider SDK. Keep redirect/cancel behavior clear.
 
@@ -993,7 +993,7 @@ The active session is not a fifth tab. When a session is running and the user le
 
 #### K. Profile, settings, privacy, and support
 
-**Layout:** Profile header with an explicit “Edit profile” action for display name and avatar. Edit profile includes optional Gender, Date of birth, Country, City, Profession, and Time zone fields, as well as the read-only verified Google account. Settings groups: Appearance (system/light/dark), Time & language (timezone, locale, week start), Timer (automatic focus/rest explanation, sound/haptics, phase notifications), Account (verified Google identity and sign out), Privacy (export data, delete account, privacy policy), Terms and Conditions, Help and support.
+**Layout:** Profile header with an explicit “Edit profile” action for display name and avatar. Edit profile includes optional Gender (Male or Female), Date of birth (calendar), City (Bangladesh district), and Profession dropdowns. Country is Bangladesh and Time zone is `Asia/Dhaka`; both are read-only. The verified Google account is read-only. Settings groups: Appearance (system/light/dark), Time & language (locale, week start), Timer (automatic focus/rest explanation, sound/haptics, phase notifications), Account (verified Google identity and sign out), Privacy (export data, delete account, privacy policy), Terms and Conditions, Help and support.
 
 **Actions:** Save profile fields; change preferences; request OS notification permission after explanation; export data; delete account with clear consequence and final confirmation; sign out. Support route opens a contact method without exposing journal entries by default.
 

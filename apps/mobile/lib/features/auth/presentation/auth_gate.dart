@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:dream_force/core/platform/device_settings.dart';
+import 'package:dream_force/features/profile/domain/profile_options.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -33,6 +33,8 @@ class _AuthGateState extends State<AuthGate> {
   var _signingIn = false;
   var _termsAccepted = false;
   var _screenTimeSyncConsent = false;
+  var _googleReady = false;
+  var _canRetryRestore = false;
   @override
   void initState() {
     super.initState();
@@ -41,40 +43,45 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> _restore() async {
     try {
-      if (_serverClientId.isNotEmpty) {
-        await GoogleSignIn.instance.initialize(serverClientId: _serverClientId);
-        final account = await GoogleSignIn.instance
-            .attemptLightweightAuthentication();
-        if (account != null && await const DreamForceAuthApi().hasSession()) {
-          if (kDebugMode) await const DreamForceAuthApi().checkReadiness();
-          final api = const DreamForceAuthApi();
-          final profile = jsonDecode(
-            (await api.request('GET', '/v1/me')).body,
-          ) as Map<String, dynamic>;
-          if (profile['termsAcceptedVersion'] !=
-              DreamForceAuthApi.termsAcceptedVersion) {
-            await api.clearSession();
-            _error = 'Please review and accept the current Terms and Privacy notice to continue.';
-          } else {
-            _user = SignedInUser(
-              account.email,
-              account.displayName,
-              account.photoUrl,
-            );
-            if (profile['timezone'] == 'UTC') {
-              try {
-                await api.request(
-                  'PATCH',
-                  '/v1/me',
-                  body: {
-                    'profile': {
-                      'timezone': await DeviceSettings.getDeviceTimezone(),
-                    },
+      _canRetryRestore = false;
+      final api = const DreamForceAuthApi();
+      if (await api.hasSession()) {
+        if (kDebugMode) await api.checkReadiness();
+        final profile = jsonDecode(
+          (await api.request('GET', '/v1/me')).body,
+        ) as Map<String, dynamic>;
+        final email = profile['email'];
+        if (email is! String || email.isEmpty) {
+          await api.clearSession();
+          throw const AuthApiException(
+            'The saved account could not be restored. Sign in again.',
+          );
+        }
+        if (profile['termsAcceptedVersion'] !=
+            DreamForceAuthApi.termsAcceptedVersion) {
+          await api.clearSession();
+          _error = 'Please review and accept the current Terms and Privacy notice to continue.';
+        } else {
+          _user = SignedInUser(
+            email,
+            profile['displayName'] as String?,
+            profile['avatarUrl'] as String?,
+          );
+          if (profile['country'] != profileCountry ||
+              profile['timezone'] != profileTimezone) {
+            try {
+              await api.request(
+                'PATCH',
+                '/v1/me',
+                body: {
+                  'profile': {
+                    'country': profileCountry,
+                    'timezone': profileTimezone,
                   },
-                );
-              } catch (_) {
-                // Keep a restored session usable if only the legacy timezone sync fails.
-              }
+                },
+              );
+            } catch (_) {
+              // A restored session stays usable if only the fixed profile fields fail to sync.
             }
           }
         }
@@ -82,11 +89,22 @@ class _AuthGateState extends State<AuthGate> {
     } catch (error) {
       _error = error is AuthApiException
           ? error.message
-          : 'Could not restore sign-in. Confirm GOOGLE_SERVER_CLIENT_ID, Android package/SHA-1 setup, and the network, then retry. (${_safeError(error)})';
+          : 'Could not restore sign-in. Check the network, then retry. (${_safeError(error)})';
+      try {
+        _canRetryRestore = await const DreamForceAuthApi().hasSession();
+      } catch (_) {
+        _canRetryRestore = false;
+      }
     }
     if (mounted) {
       setState(() => _loading = false);
     }
+  }
+
+  Future<void> _ensureGoogle() async {
+    if (_googleReady) return;
+    await GoogleSignIn.instance.initialize(serverClientId: _serverClientId);
+    _googleReady = true;
   }
 
   Future<void> _signIn() async {
@@ -99,6 +117,7 @@ class _AuthGateState extends State<AuthGate> {
     }
     setState(() => _signingIn = true);
     try {
+      await _ensureGoogle();
       final account = await GoogleSignIn.instance.authenticate();
       final idToken = account.authentication.idToken;
       if (idToken == null || idToken.isEmpty) {
@@ -108,7 +127,6 @@ class _AuthGateState extends State<AuthGate> {
       }
       await const DreamForceAuthApi().exchangeGoogleIdToken(
         idToken,
-        timezone: await DeviceSettings.getDeviceTimezone(),
         termsVersion: DreamForceAuthApi.termsAcceptedVersion,
         screenTimeConsentVersion: _screenTimeSyncConsent
             ? DreamForceAuthApi.screenTimeConsentVersion
@@ -149,7 +167,10 @@ class _AuthGateState extends State<AuthGate> {
       await const DreamForceAuthApi().clearSession();
     }
     try {
-      await GoogleSignIn.instance.signOut();
+      if (_serverClientId.isNotEmpty) {
+        await _ensureGoogle();
+        await GoogleSignIn.instance.signOut();
+      }
     } catch (_) {
       // Dream Force credentials are already cleared; Google sign-out is best effort.
     }
@@ -170,6 +191,32 @@ class _AuthGateState extends State<AuthGate> {
   Widget build(BuildContext context) {
     if (_loading) return const SplashScreen();
     if (_user != null) return widget.child(_user!, _logout);
+    if (_canRetryRestore) {
+      return Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _error ?? 'Could not restore sign-in.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () {
+                    setState(() => _loading = true);
+                    unawaited(_restore());
+                  },
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return AccountScreen(
       error: _error,
       loading: _signingIn,
@@ -238,12 +285,12 @@ class AccountScreen extends StatelessWidget {
         padding: const EdgeInsets.all(28),
         children: [
           const SizedBox(height: 20),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+          AspectRatio(
+            aspectRatio: 1936 / 544,
             child: Image.asset(
-              'assets/images/logo.jpg',
-              height: 92,
-              fit: BoxFit.cover,
+              'assets/images/cover.jpg',
+              fit: BoxFit.contain,
+              semanticLabel: 'Consistency Over Intensity',
             ),
           ),
           const SizedBox(height: 28),

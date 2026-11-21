@@ -172,28 +172,16 @@ class DreamForceAuthApi {
     );
   }
 
-  Future<void> _refreshIfNeeded(String? rejectedAccessToken) async {
-    final latestAccessToken = await _storage.read(key: _accessKey);
-    if (rejectedAccessToken != null &&
-        latestAccessToken != null &&
-        latestAccessToken != rejectedAccessToken &&
-        !_accessTokenNeedsRefresh(latestAccessToken)) {
-      return;
-    }
-
+  Future<void> _refreshIfNeeded(String? rejectedAccessToken) {
     final existingRefresh = _refreshInFlight;
-    if (existingRefresh != null) {
-      await existingRefresh;
-      return;
-    }
+    if (existingRefresh != null) return existingRefresh;
 
-    final refresh = _performRefresh();
+    // Claim the lock before any await so overlapping requests share one rotation.
+    final refresh = _performRefresh(rejectedAccessToken);
     _refreshInFlight = refresh;
-    try {
-      await refresh;
-    } finally {
+    return refresh.whenComplete(() {
       if (identical(_refreshInFlight, refresh)) _refreshInFlight = null;
-    }
+    });
   }
 
   bool _accessTokenNeedsRefresh(String token) {
@@ -222,7 +210,15 @@ class DreamForceAuthApi {
     }
   }
 
-  Future<void> _performRefresh() async {
+  Future<void> _performRefresh(String? rejectedAccessToken) async {
+    final latestAccessToken = await _storage.read(key: _accessKey);
+    if (rejectedAccessToken != null &&
+        latestAccessToken != null &&
+        latestAccessToken != rejectedAccessToken &&
+        !_accessTokenNeedsRefresh(latestAccessToken)) {
+      return;
+    }
+
     final refreshToken = await _storage.read(key: _refreshKey);
     if (refreshToken == null) {
       await clearSession();
@@ -241,6 +237,10 @@ class DreamForceAuthApi {
       final responseCode = _responseCode(response.body);
       if (responseCode == 'REFRESH_TOKEN_INVALID' ||
           responseCode == 'REFRESH_TOKEN_REPLAYED') {
+        final latestRefreshToken = await _storage.read(key: _refreshKey);
+        if (latestRefreshToken != null && latestRefreshToken != refreshToken) {
+          return;
+        }
         await clearSession();
         throw const AuthApiException('Session expired. Sign in again.');
       }
@@ -375,4 +375,7 @@ class DreamForceAuthApi {
 class AuthApiException implements Exception {
   const AuthApiException(this.message);
   final String message;
+
+  @override
+  String toString() => message;
 }

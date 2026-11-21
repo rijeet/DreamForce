@@ -59,15 +59,98 @@ export type GoogleSignIn = z.infer<typeof googleSignInSchema>;
 export type AdminSignIn = z.infer<typeof adminSignInSchema>;
 
 export const uuidSchema = z.string().uuid();
+export const fixedProfileCountry = 'Bangladesh';
+export const fixedProfileTimezone = 'Asia/Dhaka';
+export const profileGenders = ['Male', 'Female'] as const;
+export const profileProfessions = [
+  'Student',
+  'Job Holder',
+  'Job Seeker',
+  'Business Owner',
+  'Self-Employed',
+  'Other',
+] as const;
+export const bangladeshDistricts = [
+  'Bagerhat',
+  'Bandarban',
+  'Barguna',
+  'Barishal',
+  'Bhola',
+  'Bogura',
+  'Brahmanbaria',
+  'Chandpur',
+  'Chapainawabganj',
+  'Chattogram',
+  'Chuadanga',
+  "Cox's Bazar",
+  'Cumilla',
+  'Dhaka',
+  'Dinajpur',
+  'Faridpur',
+  'Feni',
+  'Gaibandha',
+  'Gazipur',
+  'Gopalganj',
+  'Habiganj',
+  'Jamalpur',
+  'Jashore',
+  'Jhalokati',
+  'Jhenaidah',
+  'Joypurhat',
+  'Khagrachhari',
+  'Khulna',
+  'Kishoreganj',
+  'Kurigram',
+  'Kushtia',
+  'Lakshmipur',
+  'Lalmonirhat',
+  'Madaripur',
+  'Magura',
+  'Manikganj',
+  'Meherpur',
+  'Moulvibazar',
+  'Munshiganj',
+  'Mymensingh',
+  'Naogaon',
+  'Narail',
+  'Narayanganj',
+  'Narsingdi',
+  'Natore',
+  'Netrokona',
+  'Nilphamari',
+  'Noakhali',
+  'Pabna',
+  'Panchagarh',
+  'Patuakhali',
+  'Pirojpur',
+  'Rajbari',
+  'Rajshahi',
+  'Rangamati',
+  'Rangpur',
+  'Satkhira',
+  'Shariatpur',
+  'Sherpur',
+  'Sirajganj',
+  'Sunamganj',
+  'Sylhet',
+  'Tangail',
+  'Thakurgaon',
+] as const;
+
+const profileDateOfBirthSchema = z.string().date().refine((value) => {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: fixedProfileTimezone }).format(new Date());
+  return value <= today;
+}, 'Date of birth cannot be in the future');
+
 export const updateProfileSchema = z.object({
   displayName: z.string().trim().min(1).max(80).nullable().optional(),
   avatarUrl: z.string().url().max(2048).nullable().optional(),
-  gender: z.string().trim().max(80).nullable().optional(),
-  dateOfBirth: z.string().date().nullable().optional(),
+  gender: z.enum(profileGenders).nullable().optional(),
+  dateOfBirth: profileDateOfBirthSchema.nullable().optional(),
   country: z.string().trim().max(100).nullable().optional(),
-  city: z.string().trim().max(100).nullable().optional(),
-  profession: z.string().trim().max(120).nullable().optional(),
-  timezone: timezoneSchema.optional(),
+  city: z.enum(bangladeshDistricts).nullable().optional(),
+  profession: z.enum(profileProfessions).nullable().optional(),
+  timezone: z.string().trim().max(64).nullable().optional(),
   locale: z.string().trim().min(2).max(35).optional(),
 });
 

@@ -167,7 +167,7 @@ class TimerScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Your timer continues if you leave this screen. Lock-screen controls depend on device settings.',
+            'This session stays in the notification shade. A sound plays when a block finishes.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],

@@ -1,20 +1,27 @@
+import 'dart:async';
 import 'dart:convert';
 
-import 'package:dream_force/core/platform/device_settings.dart';
+import 'package:dream_force/core/platform/plan_reminder.dart';
+import 'package:dream_force/core/platform/session_media.dart';
 import 'package:dream_force/features/activities/domain/activity_draft.dart';
 import 'package:dream_force/features/auth/data/dream_force_auth_api.dart';
+import 'package:dream_force/features/plan/presentation/plan_occurrence_card.dart';
 import 'package:material_ui/material_ui.dart';
 
 class PlanScreen extends StatefulWidget {
   const PlanScreen({
     required this.onReview,
     required this.onStartActivity,
+    this.active = true,
+    this.refreshToken = 0,
     super.key,
   });
 
   final ValueChanged<String> onReview;
   final Future<void> Function(ActivityDraft activity, String occurrenceId)
   onStartActivity;
+  final bool active;
+  final int refreshToken;
 
   @override
   State<PlanScreen> createState() => _PlanScreenState();
@@ -23,12 +30,13 @@ class PlanScreen extends StatefulWidget {
 class _PlanScreenState extends State<PlanScreen> {
   final _api = const DreamForceAuthApi();
   late DateTime _selectedDate;
-  String _timezone = 'UTC';
+  String _timezone = 'Asia/Dhaka';
   Map<String, dynamic>? _plan;
   List<Map<String, dynamic>> _entries = [];
   List<Map<String, dynamic>> _activities = [];
   List<Map<String, dynamic>> _occurrences = [];
-  bool _loading = true;
+  bool _loading = false;
+  bool _refreshing = false;
   bool _saving = false;
   bool _editing = false;
   String? _error;
@@ -38,11 +46,37 @@ class _PlanScreenState extends State<PlanScreen> {
     super.initState();
     final now = DateTime.now();
     _selectedDate = DateTime(now.year, now.month, now.day);
-    _load();
+    if (widget.active) {
+      _loading = true;
+      unawaited(_load(initial: true));
+    }
+  }
+
+  @override
+  void didUpdateWidget(PlanScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final becameActive = widget.active && !oldWidget.active;
+    final refresh = widget.refreshToken != oldWidget.refreshToken;
+    if (!becameActive && !refresh) return;
+    if (_plan == null) {
+      _loading = true;
+    } else {
+      _refreshing = true;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_load(initial: true));
+    });
   }
 
   String _date(DateTime value) =>
       '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+
+  bool _isToday(DateTime value) {
+    final now = DateTime.now();
+    return value.year == now.year &&
+        value.month == now.month &&
+        value.day == now.day;
+  }
 
   IconData _icon(String? key) => switch (key) {
     'study' => Icons.menu_book_outlined,
@@ -53,68 +87,80 @@ class _PlanScreenState extends State<PlanScreen> {
     _ => Icons.task_alt_outlined,
   };
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool background = false, bool initial = false}) async {
+    if (!initial && mounted) {
+      setState(() {
+        if (background && _plan != null) {
+          _refreshing = true;
+        } else {
+          _loading = true;
+        }
+        _error = null;
+      });
+    }
     try {
-      _timezone = await DeviceSettings.getDeviceTimezone();
-      final planResponse = await _api.request('GET', '/v1/plans');
-      final plans = jsonDecode(planResponse.body) as List<dynamic>;
-      if (plans.isEmpty) {
-        final created = await _api.request(
-          'POST',
-          '/v1/plans',
-          body: {
-            'name': 'My weekly plan',
-            'timezone': _timezone,
-            'entries': <Object>[],
-          },
-        );
-        _plan = jsonDecode(created.body) as Map<String, dynamic>;
-      } else {
-        _plan = plans.whereType<Map<String, dynamic>>().firstWhere(
-          (plan) => plan['isActive'] == true,
-          orElse: () => plans.first as Map<String, dynamic>,
-        );
-        final detail = await _api.request('GET', '/v1/plans/${_plan!['id']}');
-        _plan = jsonDecode(detail.body) as Map<String, dynamic>;
-      }
-      _entries =
-          (List<dynamic>.from(_plan?['entries'] as List<dynamic>? ?? const []))
-              .whereType<Map<String, dynamic>>()
-              .map(Map<String, dynamic>.from)
-              .toList();
-      final activityResponse = await _api.request(
-        'GET',
-        '/v1/activity-templates',
-      );
-      _activities = (jsonDecode(activityResponse.body) as List<dynamic>)
-          .whereType<Map<String, dynamic>>()
-          .map(Map<String, dynamic>.from)
-          .toList();
       await _loadOccurrences();
+      _error = null;
     } catch (error) {
       _error = error is AuthApiException
           ? error.message
           : 'Could not load your weekly plan.';
     }
-    if (mounted) setState(() => _loading = false);
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _refreshing = false;
+      });
+    }
   }
 
   Future<void> _loadOccurrences() async {
     final response = await _api.request(
       'GET',
-      '/v1/plan-occurrences?localDate=${_date(_selectedDate)}',
+      '/v1/plans/current?localDate=${_date(_selectedDate)}',
     );
-    final value = jsonDecode(response.body);
-    _occurrences = value is List
-        ? value
-              .whereType<Map<String, dynamic>>()
-              .map(Map<String, dynamic>.from)
-              .toList()
-        : [];
+    var body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (body['plan'] == null) {
+      await _api.request(
+        'POST',
+        '/v1/plans',
+        body: {
+          'name': 'My weekly plan',
+          'timezone': 'Asia/Dhaka',
+          'entries': <Object>[],
+        },
+      );
+      final again = await _api.request(
+        'GET',
+        '/v1/plans/current?localDate=${_date(_selectedDate)}',
+      );
+      body = jsonDecode(again.body) as Map<String, dynamic>;
+    }
+    final plan = body['plan'];
+    if (plan is! Map<String, dynamic>) {
+      throw const AuthApiException('Could not load your weekly plan.');
+    }
+    _plan = plan;
+    _timezone = plan['timezone'] as String? ?? 'Asia/Dhaka';
+    _entries = (plan['entries'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(Map<String, dynamic>.from)
+        .toList();
+    _activities = (body['templates'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(Map<String, dynamic>.from)
+        .toList();
+    _occurrences = (body['occurrences'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(Map<String, dynamic>.from)
+        .toList();
+    if (_isToday(_selectedDate)) {
+      unawaited(
+        SessionMedia.schedulePlanReminders(
+          remindersForToday(_occurrences, DateTime.now()),
+        ),
+      );
+    }
   }
 
   List<Map<String, dynamic>> get _dayEntries =>
@@ -133,7 +179,7 @@ class _PlanScreenState extends State<PlanScreen> {
   Future<void> _selectDay(DateTime date) async {
     setState(() {
       _selectedDate = date;
-      _loading = true;
+      _refreshing = true;
       _error = null;
     });
     try {
@@ -143,7 +189,7 @@ class _PlanScreenState extends State<PlanScreen> {
           ? error.message
           : 'Could not load this day.';
     }
-    if (mounted) setState(() => _loading = false);
+    if (mounted) setState(() => _refreshing = false);
   }
 
   Future<void> _saveEntries(List<Map<String, dynamic>> entries) async {
@@ -523,7 +569,9 @@ class _PlanScreenState extends State<PlanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading && _plan == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
     final todayEntries = _dayEntries;
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
@@ -545,6 +593,10 @@ class _PlanScreenState extends State<PlanScreen> {
           ],
         ),
         Text(_weekLabel()),
+        if (_refreshing) ...[
+          const SizedBox(height: 8),
+          const LinearProgressIndicator(),
+        ],
         const SizedBox(height: 16),
         SizedBox(
           height: 72,
@@ -722,65 +774,18 @@ class _PlanScreenState extends State<PlanScreen> {
     BuildContext context,
     Map<String, dynamic> occurrence,
   ) {
-    final state = occurrence['displayState'] as String? ?? 'scheduled';
-    final duration = occurrence['plannedMinutes'] as int? ?? 25;
-    final time = occurrence['localStartTime'] as String?;
     final activity = _activityFor(occurrence['templateId']);
-    final item = ActivityDraft.seconds(
-      name: occurrence['name'] as String? ?? 'Activity',
-      icon: _icon(occurrence['iconKey'] as String?),
-      iconKey: occurrence['iconKey'] as String? ?? 'focus',
-      category: activity?['category'] as String?,
-      templateId: occurrence['templateId'] as String?,
-      plannedSeconds: duration * 60,
-    );
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          children: [
-            Icon(
-              _icon(occurrence['iconKey'] as String?),
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.name,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  Text(
-                    '${time == null ? 'Any time' : time.substring(0, 5)} · $duration min${state == 'skipped'
-                        ? ' · Skipped'
-                        : state == 'completed'
-                        ? ' · Completed'
-                        : state == 'started'
-                        ? ' · In progress'
-                        : ''}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-            if (state == 'scheduled' || state == 'unstarted') ...[
-              TextButton(
-                onPressed: _saving ? null : () => _start(occurrence, item),
-                child: const Text('Start'),
-              ),
-              if (state != 'unstarted')
-                TextButton(
-                  onPressed: () => _skip(occurrence),
-                  child: const Text('Skip'),
-                ),
-            ] else if (state == 'started')
-              const Icon(Icons.play_circle_outline),
-          ],
-        ),
-      ),
+    final enriched = {
+      ...occurrence,
+      'category': occurrence['category'] ?? activity?['category'],
+    };
+    return PlanOccurrenceCard(
+      occurrence: enriched,
+      busy: _saving,
+      onStart: (activity) => _start(occurrence, activity),
+      onSkip: () {
+        unawaited(_skip(occurrence));
+      },
     );
   }
 }
